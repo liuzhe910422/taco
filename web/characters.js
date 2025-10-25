@@ -2,6 +2,10 @@ const statusEl = document.getElementById("status");
 const listEl = document.getElementById("character-list");
 const nextBtn = document.getElementById("next-btn");
 const reanalyseBtn = document.getElementById("reanalyse-btn");
+const generateAllBtn = document.getElementById("generate-all-btn");
+const progressContainer = document.getElementById("progress-container");
+const progressBar = document.getElementById("progress-bar");
+const progressText = document.getElementById("progress-text");
 
 let charactersData = [];
 let isBusy = false;
@@ -15,6 +19,7 @@ function setBusy(busy) {
   isBusy = busy;
   nextBtn.disabled = busy;
   reanalyseBtn.disabled = busy;
+  generateAllBtn.disabled = busy;
 }
 
 function toCharacterArray(raw) {
@@ -177,6 +182,7 @@ async function saveCharacters() {
 
 nextBtn.addEventListener("click", saveCharacters);
 reanalyseBtn.addEventListener("click", () => loadCharacters({ forceAnalyse: true }));
+generateAllBtn.addEventListener("click", generateAllCharacterImages);
 
 async function generateCharacterImage(index) {
   if (isBusy) {
@@ -207,6 +213,61 @@ async function generateCharacterImage(index) {
     setStatus(err.message, true);
   } finally {
     setBusy(false);
+  }
+}
+
+async function generateAllCharacterImages() {
+  if (isBusy) {
+    return;
+  }
+  try {
+    setBusy(true);
+    progressContainer.style.display = "block";
+    progressBar.style.width = "0%";
+    progressText.textContent = "0%";
+    setStatus("正在批量生成角色图片...");
+
+    const response = await fetch("/api/characters/generate-all", {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "批量生成失败");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = JSON.parse(line.slice(6));
+          const percent = Math.round((data.current / data.total) * 100);
+          progressBar.style.width = percent + "%";
+          progressText.textContent = `${data.current}/${data.total}`;
+          setStatus(data.status);
+        }
+      }
+    }
+
+    await loadCharacters();
+    setStatus("所有角色图片生成完成！");
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    setBusy(false);
+    setTimeout(() => {
+      progressContainer.style.display = "none";
+    }, 2000);
   }
 }
 

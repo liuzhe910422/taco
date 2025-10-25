@@ -12,9 +12,16 @@
       <h2 class="section-title">角色</h2>
       <p class="section-hint">根据上传的小说自动分析主要人物，可在下方进行调整。</p>
       <p class="status" id="status"></p>
+      <div id="progress-container" style="display:none; margin: 16px 0;">
+        <div style="background: #f0f0f0; border-radius: 4px; height: 24px; overflow: hidden; position: relative;">
+          <div id="progress-bar" style="background: linear-gradient(90deg, #4CAF50, #45a049); height: 100%; width: 0%; transition: width 0.3s;"></div>
+          <div id="progress-text" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 12px; font-weight: bold; color: #333;"></div>
+        </div>
+      </div>
       <div id="character-list" class="character-list"></div>
       <div class="actions">
         <button type="button" class="secondary" id="reanalyse-btn">重新识别</button>
+        <button type="button" class="secondary" id="generate-all-btn">一键生成全部</button>
         <button type="button" id="next-btn">下一步</button>
       </div>
     </main>
