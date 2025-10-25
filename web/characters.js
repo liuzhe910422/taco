@@ -9,6 +9,7 @@ const progressText = document.getElementById("progress-text");
 
 let charactersData = [];
 let isBusy = false;
+let collapsedStates = [];
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -36,6 +37,10 @@ function toCharacterArray(raw) {
 function renderCharacters(characters) {
   charactersData = toCharacterArray(characters);
 
+  if (collapsedStates.length !== charactersData.length) {
+    collapsedStates = new Array(charactersData.length).fill(false);
+  }
+
   listEl.innerHTML = "";
   if (!charactersData.length) {
     const empty = document.createElement("p");
@@ -48,10 +53,30 @@ function renderCharacters(characters) {
   charactersData.forEach((character, index) => {
     const item = document.createElement("div");
     item.className = "character-item";
+    if (collapsedStates[index]) {
+      item.classList.add("collapsed");
+    }
 
     const header = document.createElement("header");
-    header.textContent = `角色 ${index + 1}`;
+    
+    const headerTitle = document.createElement("span");
+    headerTitle.textContent = `角色 ${index + 1}`;
+    if (character.name) {
+      headerTitle.textContent += `: ${character.name}`;
+    }
+    header.appendChild(headerTitle);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "character-toggle-btn";
+    toggleBtn.innerHTML = collapsedStates[index] ? "▼" : "▲";
+    toggleBtn.setAttribute("aria-label", collapsedStates[index] ? "展开" : "折叠");
+    toggleBtn.addEventListener("click", () => toggleCharacter(index));
+    header.appendChild(toggleBtn);
+
     item.appendChild(header);
+
+    const bodyContent = document.createElement("div");
+    bodyContent.className = "character-body";
 
     // 角色图片显示区域
     if (character.imagePath) {
@@ -64,12 +89,12 @@ function renderCharacters(characters) {
       image.className = "character-image";
       imageContainer.appendChild(image);
 
-      item.appendChild(imageContainer);
+      bodyContent.appendChild(imageContainer);
     }
 
     const nameLabel = document.createElement("label");
     nameLabel.textContent = "角色名称";
-    item.appendChild(nameLabel);
+    bodyContent.appendChild(nameLabel);
 
     const nameInput = document.createElement("input");
     nameInput.type = "text";
@@ -78,12 +103,12 @@ function renderCharacters(characters) {
     nameInput.addEventListener("input", (event) => {
       charactersData[index].name = event.target.value;
     });
-    item.appendChild(nameInput);
+    bodyContent.appendChild(nameInput);
 
     const descLabel = document.createElement("label");
     descLabel.style.marginTop = "12px";
     descLabel.textContent = "角色描述";
-    item.appendChild(descLabel);
+    bodyContent.appendChild(descLabel);
 
     const descInput = document.createElement("textarea");
     descInput.value = character.description;
@@ -91,7 +116,7 @@ function renderCharacters(characters) {
     descInput.addEventListener("input", (event) => {
       charactersData[index].description = event.target.value;
     });
-    item.appendChild(descInput);
+    bodyContent.appendChild(descInput);
 
     // 生成角色图片按钮
     const buttonGroup = document.createElement("div");
@@ -104,10 +129,16 @@ function renderCharacters(characters) {
     generateImageBtn.addEventListener("click", () => generateCharacterImage(index));
     buttonGroup.appendChild(generateImageBtn);
 
-    item.appendChild(buttonGroup);
+    bodyContent.appendChild(buttonGroup);
+    item.appendChild(bodyContent);
 
     listEl.appendChild(item);
   });
+}
+
+function toggleCharacter(index) {
+  collapsedStates[index] = !collapsedStates[index];
+  renderCharacters(charactersData);
 }
 
 async function loadCharacters({ forceAnalyse = false } = {}) {
