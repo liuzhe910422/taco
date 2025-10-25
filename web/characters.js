@@ -258,6 +258,7 @@ async function generateAllCharacterImages() {
         if (response.ok) {
           const updatedCharacter = await response.json();
           charactersData[i] = updatedCharacter;
+          renderCharacters(charactersData);
           successCount++;
           setStatus(`角色 ${i + 1}/${total} (${character.name}) 生成成功`);
         } else {
@@ -273,7 +274,6 @@ async function generateAllCharacterImages() {
       progressText.textContent = `${i + 1}/${total}`;
     }
 
-    await loadCharacters();
     setStatus(`所有角色图片生成完成！成功: ${successCount}, 跳过: ${skipCount}, 失败: ${total - successCount - skipCount}`);
   } catch (err) {
     setStatus(err.message, true);
