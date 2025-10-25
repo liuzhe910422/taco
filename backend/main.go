@@ -38,14 +38,16 @@ var (
 
 // Config represents the user configurable options for the generator.
 type Config struct {
-	NovelFile      string      `json:"novelFile"`
-	LLM            LLMConfig   `json:"llm"`
-	Image          ImageConfig `json:"image"`
-	ImageEdit      ImageConfig `json:"imageEdit"`
-	Voice          VoiceConfig `json:"voice"`
-	VideoModel     string      `json:"videoModel"`
-	CharacterCount int         `json:"characterCount"`
-	SceneCount     int         `json:"sceneCount"`
+	NovelFile        string      `json:"novelFile"`
+	AnimeStyle       string      `json:"animeStyle"`
+	CustomAnimeStyle string      `json:"customAnimeStyle"`
+	LLM              LLMConfig   `json:"llm"`
+	Image            ImageConfig `json:"image"`
+	ImageEdit        ImageConfig `json:"imageEdit"`
+	Voice            VoiceConfig `json:"voice"`
+	VideoModel       string      `json:"videoModel"`
+	CharacterCount   int         `json:"characterCount"`
+	SceneCount       int         `json:"sceneCount"`
 }
 
 type LLMConfig struct {
@@ -91,6 +93,38 @@ type audioResult struct {
 	Source    string
 	IsURL     bool
 	Extension string
+}
+
+func buildStylePrompt(cfg Config) string {
+	style := strings.TrimSpace(cfg.AnimeStyle)
+	if style == "" {
+		return "以高质量动漫风格绘制"
+	}
+
+	styleMap := map[string]string{
+		"traditional": "以传统日系动漫风格绘制,强调大眼睛、鲜明轮廓和细腻的阴影",
+		"ghibli":      "以吉卜力工作室风格绘制,呈现柔和色彩、温暖氛围和手绘质感",
+		"shinkai":     "以新海诚风格绘制,强调逼真的光影效果、细腻的背景和唯美画面",
+		"miyazaki":    "以宫崎骏风格绘制,呈现奇幻世界观、细腻情感和温暖色调",
+		"cyberpunk":   "以赛博朋克动漫风格绘制,强调霓虹灯光、未来科技和暗黑氛围",
+		"watercolor":  "以水彩画动漫风格绘制,呈现柔和渐变、清新色彩和朦胧质感",
+		"pixel":       "以像素艺术动漫风格绘制,强调复古游戏感、方块化和鲜明色块",
+		"gothic":      "以暗黑哥特动漫风格绘制,呈现黑暗氛围、神秘元素和浓郁色调",
+		"chibi":       "以可爱Q版动漫风格绘制,强调萌系特征、夸张比例和明亮色彩",
+	}
+
+	if prompt, ok := styleMap[style]; ok {
+		return prompt
+	}
+
+	if style == "custom" {
+		customStyle := strings.TrimSpace(cfg.CustomAnimeStyle)
+		if customStyle != "" {
+			return fmt.Sprintf("以%s风格绘制", customStyle)
+		}
+	}
+
+	return fmt.Sprintf("以%s风格绘制", style)
 }
 
 func main() {
@@ -692,7 +726,8 @@ func requestSceneImage(ctx context.Context, cfg Config, scene Scene) (string, er
 	}
 
 	promptBuilder := strings.Builder{}
-	promptBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	promptBuilder.WriteString(buildStylePrompt(cfg))
+	promptBuilder.WriteString("以下场景，强调电影级光影、鲜明色彩与角色表情。")
 	promptBuilder.WriteString("场景描述：")
 	promptBuilder.WriteString(scene.Description)
 	if characterLine != "" {
@@ -945,7 +980,8 @@ func requestSceneImageWithCharacters(ctx context.Context, cfg Config, scene Scen
 
 	// 添加场景描述
 	textBuilder.WriteString("请根据上述人物形象，")
-	textBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	textBuilder.WriteString(buildStylePrompt(cfg))
+	textBuilder.WriteString("以下场景，强调电影级光影、鲜明色彩与角色表情。")
 	textBuilder.WriteString("场景描述：")
 	textBuilder.WriteString(scene.Description)
 
@@ -2019,7 +2055,8 @@ func requestCharacterImage(ctx context.Context, cfg Config, character CharacterP
 	}
 
 	promptBuilder := strings.Builder{}
-	promptBuilder.WriteString("以高质量动漫风格绘制角色立绘，要求：")
+	promptBuilder.WriteString(buildStylePrompt(cfg))
+	promptBuilder.WriteString("角色立绘，要求：")
 	promptBuilder.WriteString("角色名称：")
 	promptBuilder.WriteString(character.Name)
 	promptBuilder.WriteString("。角色特征描述：")
