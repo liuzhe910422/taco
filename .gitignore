@@ -3,3 +3,5 @@
 .vscode/
 
 __debug_*
+
+backend/config/config.json
