@@ -132,6 +132,18 @@ function renderScenes(scenes) {
     const buttonGroup = document.createElement("div");
     buttonGroup.className = "scene-button-group";
 
+    const characterGenerateBtn = document.createElement("button");
+    characterGenerateBtn.type = "button";
+    characterGenerateBtn.className = "scene-character-generate";
+    characterGenerateBtn.textContent = "人物生成";
+    characterGenerateBtn.title = scene.imagePath
+      ? "使用人物图片重新生成场景图片"
+      : "使用人物图片生成场景图片";
+    characterGenerateBtn.dataset.sceneIndex = String(index);
+    characterGenerateBtn.disabled = !scene.description;
+    characterGenerateBtn.addEventListener("click", () => handleGenerateSceneWithCharacters(index));
+    buttonGroup.appendChild(characterGenerateBtn);
+
     const generateBtn = document.createElement("button");
     generateBtn.type = "button";
     generateBtn.className = "scene-generate";
@@ -252,6 +264,52 @@ async function handleGenerateScene(index) {
     setBusy(true);
     setStatus(`正在生成场景 ${index + 1} 的图片...`);
     const response = await fetch("/api/scenes/generate-image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ index }),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || "生成场景图片失败");
+    }
+    const updatedScene = await response.json();
+    scenesData[index] = normalizeScene(updatedScene);
+    setStatus("图片生成完成，正在打开详情...");
+    navigated = true;
+    setBusy(false);
+    window.location.href = `scene_detail.html?index=${index}`;
+    return;
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    if (!navigated) {
+      if (button) {
+        button.disabled = previousDisabled;
+      }
+      setBusy(false);
+    }
+  }
+}
+
+async function handleGenerateSceneWithCharacters(index) {
+  if (isBusy) {
+    return;
+  }
+  const button = document.querySelector(
+    `.scene-character-generate[data-scene-index="${index}"]`,
+  );
+  const previousDisabled = button?.disabled ?? false;
+  if (button) {
+    button.disabled = true;
+  }
+
+  let navigated = false;
+  try {
+    setBusy(true);
+    setStatus(`正在使用人物图片生成场景 ${index + 1} 的图片...`);
+    const response = await fetch("/api/scenes/generate-image-with-characters", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
