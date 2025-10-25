@@ -88,6 +88,12 @@
       transform: translateY(-1px);
     }
 
+    .playback-btn:active:not(:disabled) {
+      background: #4a64c7;
+      box-shadow: 0 6px 16px rgba(86, 118, 224, 0.25);
+      transform: translateY(1px);
+    }
+
     .playback-btn:disabled {
       background: #b8c2f5;
       cursor: not-allowed;
@@ -103,6 +109,10 @@
       background: #dee4ff;
       box-shadow: none;
       transform: none;
+    }
+
+    .playback-btn.secondary:active:not(:disabled) {
+      background: #cdd6ff;
     }
 
     .playback-placeholder {
