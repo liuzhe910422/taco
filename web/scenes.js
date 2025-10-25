@@ -2,6 +2,10 @@ const statusEl = document.getElementById("status");
 const listEl = document.getElementById("scene-list");
 const saveBtn = document.getElementById("save-btn");
 const reanalyseBtn = document.getElementById("reanalyse-btn");
+const generateAllBtn = document.getElementById("generate-all-btn");
+const progressContainer = document.getElementById("progress-container");
+const progressBar = document.getElementById("progress-bar");
+const progressText = document.getElementById("progress-text");
 
 let scenesData = [];
 let isBusy = false;
@@ -15,6 +19,7 @@ function setBusy(busy) {
   isBusy = busy;
   saveBtn.disabled = busy;
   reanalyseBtn.disabled = busy;
+  generateAllBtn.disabled = busy;
 }
 
 function toStringArray(value) {
@@ -366,5 +371,78 @@ async function handleGenerateSceneWithCharacters(index) {
 
 saveBtn.addEventListener("click", saveScenes);
 reanalyseBtn.addEventListener("click", () => loadScenes({ forceAnalyse: true }));
+generateAllBtn.addEventListener("click", generateAllSceneImages);
+
+async function generateAllSceneImages() {
+  if (isBusy) {
+    return;
+  }
+  try {
+    setBusy(true);
+    progressContainer.style.display = "block";
+    progressBar.style.width = "0%";
+    progressText.textContent = "0%";
+    setStatus("正在批量生成场景图片...");
+
+    const total = scenesData.length;
+    let successCount = 0;
+    let skipCount = 0;
+
+    for (let i = 0; i < total; i++) {
+      const scene = scenesData[i];
+      
+      if (!scene.description || scene.description.trim() === "") {
+        skipCount++;
+        const percent = Math.round(((i + 1) / total) * 100);
+        progressBar.style.width = percent + "%";
+        progressText.textContent = `${i + 1}/${total}`;
+        setStatus(`场景 ${i + 1} (${scene.title}) 描述为空，跳过`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
+      }
+
+      setStatus(`正在生成场景 ${i + 1}/${total}: ${scene.title}`);
+
+      try {
+        const response = await fetch("/api/scenes/generate-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ index: i }),
+        });
+
+        if (response.ok) {
+          const updatedScene = await response.json();
+          scenesData[i] = normalizeScene(updatedScene);
+          successCount++;
+          setStatus(`场景 ${i + 1}/${total} (${scene.title}) 生成成功`);
+        } else {
+          const text = await response.text();
+          setStatus(`场景 ${i + 1} (${scene.title}) 生成失败: ${text}`);
+        }
+      } catch (err) {
+        setStatus(`场景 ${i + 1} (${scene.title}) 生成失败: ${err.message}`);
+      }
+
+      const percent = Math.round(((i + 1) / total) * 100);
+      progressBar.style.width = percent + "%";
+      progressText.textContent = `${i + 1}/${total}`;
+    }
+
+    setBusy(false);
+    await loadScenes();
+    setStatus(`所有场景图片生成完成！成功: ${successCount}, 跳过: ${skipCount}, 失败: ${total - successCount - skipCount}`);
+    setTimeout(() => {
+      progressContainer.style.display = "none";
+    }, 2000);
+  } catch (err) {
+    setStatus(err.message, true);
+    setBusy(false);
+    setTimeout(() => {
+      progressContainer.style.display = "none";
+    }, 2000);
+  }
+}
 
 loadScenes();

@@ -2,6 +2,10 @@ const statusEl = document.getElementById("status");
 const listEl = document.getElementById("character-list");
 const nextBtn = document.getElementById("next-btn");
 const reanalyseBtn = document.getElementById("reanalyse-btn");
+const generateAllBtn = document.getElementById("generate-all-btn");
+const progressContainer = document.getElementById("progress-container");
+const progressBar = document.getElementById("progress-bar");
+const progressText = document.getElementById("progress-text");
 
 let charactersData = [];
 let isBusy = false;
@@ -15,6 +19,7 @@ function setBusy(busy) {
   isBusy = busy;
   nextBtn.disabled = busy;
   reanalyseBtn.disabled = busy;
+  generateAllBtn.disabled = busy;
 }
 
 function toCharacterArray(raw) {
@@ -177,6 +182,7 @@ async function saveCharacters() {
 
 nextBtn.addEventListener("click", saveCharacters);
 reanalyseBtn.addEventListener("click", () => loadCharacters({ forceAnalyse: true }));
+generateAllBtn.addEventListener("click", generateAllCharacterImages);
 
 async function generateCharacterImage(index) {
   if (isBusy) {
@@ -207,6 +213,79 @@ async function generateCharacterImage(index) {
     setStatus(err.message, true);
   } finally {
     setBusy(false);
+  }
+}
+
+async function generateAllCharacterImages() {
+  if (isBusy) {
+    return;
+  }
+  try {
+    setBusy(true);
+    progressContainer.style.display = "block";
+    progressBar.style.width = "0%";
+    progressText.textContent = "0%";
+    setStatus("正在批量生成角色图片...");
+
+    const total = charactersData.length;
+    let successCount = 0;
+    let skipCount = 0;
+
+    for (let i = 0; i < total; i++) {
+      const character = charactersData[i];
+      
+      if (!character.description || character.description.trim() === "") {
+        skipCount++;
+        const percent = Math.round(((i + 1) / total) * 100);
+        progressBar.style.width = percent + "%";
+        progressText.textContent = `${i + 1}/${total}`;
+        setStatus(`角色 ${i + 1} (${character.name}) 描述为空，跳过`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
+      }
+
+      setStatus(`正在生成角色 ${i + 1}/${total}: ${character.name}`);
+
+      try {
+        const response = await fetch("/api/characters/generate-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ index: i }),
+        });
+
+        if (response.ok) {
+          const updatedCharacter = await response.json();
+          charactersData[i] = updatedCharacter;
+          renderCharacters(charactersData);
+          successCount++;
+          setStatus(`角色 ${i + 1}/${total} (${character.name}) 生成成功`);
+        } else {
+          const text = await response.text();
+          setStatus(`角色 ${i + 1} (${character.name}) 生成失败: ${text}`);
+        }
+      } catch (err) {
+        setStatus(`角色 ${i + 1} (${character.name}) 生成失败: ${err.message}`);
+      }
+
+      const percent = Math.round(((i + 1) / total) * 100);
+      progressBar.style.width = percent + "%";
+      progressText.textContent = `${i + 1}/${total}`;
+    }
+
+    setBusy(false);
+    await loadCharacters();
+    setStatus(`所有角色图片生成完成！成功: ${successCount}, 跳过: ${skipCount}, 失败: ${total - successCount - skipCount}`);
+    setTimeout(() => {
+      progressContainer.style.display = "none";
+    }, 2000);
+  } catch (err) {
+    setStatus(err.message, true);
+    setBusy(false);
+    setTimeout(() => {
+      progressContainer.style.display = "none";
+    }, 2000);
   }
 }
 
