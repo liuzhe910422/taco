@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Taco - 场景播放</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .playback-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .playback-scene {
+      text-align: center;
+    }
+
+    .playback-progress {
+      margin-bottom: 24px;
+      font-size: 16px;
+      color: #6a6e85;
+    }
+
+    .playback-title {
+      font-size: 32px;
+      font-weight: 700;
+      color: #2f3358;
+      margin-bottom: 24px;
+    }
+
+    .playback-image-container {
+      position: relative;
+      margin-bottom: 32px;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 24px 48px rgba(15, 23, 42, 0.2);
+    }
+
+    .playback-image {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .playback-narration {
+      padding: 24px 32px;
+      background: linear-gradient(135deg, #f6f8ff 0%, #eef1ff 100%);
+      border-radius: 20px;
+      border: 1px solid #dce0f5;
+      line-height: 1.8;
+      color: #3b4268;
+      font-size: 18px;
+      margin-bottom: 24px;
+    }
+
+    .playback-audio-container {
+      margin-bottom: 24px;
+    }
+
+    .playback-audio {
+      width: 100%;
+      max-width: 600px;
+      border-radius: 16px;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.15);
+    }
+
+    .playback-controls {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 32px;
+    }
+
+    .playback-btn {
+      background: #688bff;
+      color: #ffffff;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 32px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .playback-btn:hover:not(:disabled) {
+      background: #5676e0;
+      box-shadow: 0 14px 30px rgba(86, 118, 224, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .playback-btn:disabled {
+      background: #b8c2f5;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .playback-btn.secondary {
+      background: #eef1ff;
+      color: #4450aa;
+    }
+
+    .playback-btn.secondary:hover:not(:disabled) {
+      background: #dee4ff;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .playback-placeholder {
+      padding: 80px 40px;
+      text-align: center;
+      color: #6a6e85;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page playback-container">
+    <header class="brand">Taco 动漫生成器 - 场景播放</header>
+    <main class="card">
+      <div id="playback-content" class="playback-scene">
+        <p class="playback-placeholder">正在加载场景...</p>
+      </div>
+      <div class="playback-controls">
+        <button type="button" class="playback-btn secondary" id="prev-btn" disabled>上一个场景</button>
+        <button type="button" class="playback-btn secondary" id="pause-btn">暂停</button>
+        <button type="button" class="playback-btn secondary" id="next-btn">下一个场景</button>
+        <button type="button" class="playback-btn" id="close-btn">关闭</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="playback.js?v=20251025b"></script>
+</body>
+</html>

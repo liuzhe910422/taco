@@ -1,0 +1,16 @@
+{
+  "novelFile": "",
+  "llm": {
+    "model": "gpt-4o-mini",
+    "baseUrl": "https://api.openai.com",
+    "apiKey": ""
+  },
+  "image": {
+    "model": "gpt-4o-image",
+    "baseUrl": "https://api.openai.com",
+    "apiKey": ""
+  },
+  "videoModel": "pika-labs",
+  "characterCount": 2,
+  "sceneCount": 5
+}

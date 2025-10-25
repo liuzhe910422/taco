@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Taco - 场景详情</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <header class="brand">Taco 动漫生成器</header>
+    <main class="card scene-detail">
+      <h2 class="section-title">场景详情</h2>
+      <p class="status" id="status"></p>
+      <div class="detail-layout">
+        <nav class="detail-nav" id="detail-nav">
+          <button type="button" class="active" data-target="image-panel">图片</button>
+          <button type="button" data-target="audio-panel">声音</button>
+          <button type="button" data-target="narration-panel">解说词</button>
+        </nav>
+        <div class="detail-panels">
+          <section id="image-panel" class="detail-panel active">
+            <h3 id="scene-title" class="detail-heading"></h3>
+            <div id="image-container"></div>
+          </section>
+          <section id="audio-panel" class="detail-panel">
+            <h3 class="detail-heading">声音</h3>
+            <div id="audio-container" class="detail-audio"></div>
+            <button type="button" class="scene-audio-btn" id="generate-audio-btn">生成声音</button>
+          </section>
+          <section id="narration-panel" class="detail-panel">
+            <h3 class="detail-heading">文案与解说</h3>
+            <h4 class="detail-subheading">解说词</h4>
+            <div id="narration-content" class="detail-text"></div>
+            <h4 class="detail-subheading">关键对话</h4>
+            <div id="dialogue-content" class="detail-text"></div>
+            <h4 class="detail-subheading">场景描述</h4>
+            <div id="description-content" class="detail-text"></div>
+          </section>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" id="back-btn">返回场景列表</button>
+        <button type="button" id="close-btn">关闭</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="scene_detail.js"></script>
+</body>
+</html>
