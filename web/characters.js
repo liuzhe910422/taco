@@ -24,6 +24,7 @@ function toCharacterArray(raw) {
   return raw.map((character) => ({
     name: character?.name ?? "",
     description: character?.description ?? "",
+    imagePath: character?.imagePath ?? "",
   }));
 }
 
@@ -46,6 +47,20 @@ function renderCharacters(characters) {
     const header = document.createElement("header");
     header.textContent = `角色 ${index + 1}`;
     item.appendChild(header);
+
+    // 角色图片显示区域
+    if (character.imagePath) {
+      const imageContainer = document.createElement("div");
+      imageContainer.className = "character-image-container";
+
+      const image = document.createElement("img");
+      image.src = character.imagePath;
+      image.alt = character.name;
+      image.className = "character-image";
+      imageContainer.appendChild(image);
+
+      item.appendChild(imageContainer);
+    }
 
     const nameLabel = document.createElement("label");
     nameLabel.textContent = "角色名称";
@@ -72,6 +87,19 @@ function renderCharacters(characters) {
       charactersData[index].description = event.target.value;
     });
     item.appendChild(descInput);
+
+    // 生成角色图片按钮
+    const buttonGroup = document.createElement("div");
+    buttonGroup.className = "character-button-group";
+
+    const generateImageBtn = document.createElement("button");
+    generateImageBtn.type = "button";
+    generateImageBtn.className = "character-generate-btn";
+    generateImageBtn.textContent = "生成角色图片";
+    generateImageBtn.addEventListener("click", () => generateCharacterImage(index));
+    buttonGroup.appendChild(generateImageBtn);
+
+    item.appendChild(buttonGroup);
 
     listEl.appendChild(item);
   });
@@ -149,5 +177,37 @@ async function saveCharacters() {
 
 nextBtn.addEventListener("click", saveCharacters);
 reanalyseBtn.addEventListener("click", () => loadCharacters({ forceAnalyse: true }));
+
+async function generateCharacterImage(index) {
+  if (isBusy) {
+    return;
+  }
+  try {
+    setBusy(true);
+    setStatus(`正在生成角色 ${index + 1} 的图片...`);
+
+    const response = await fetch("/api/characters/generate-image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ index }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "生成图片失败");
+    }
+
+    const updatedCharacter = await response.json();
+    charactersData[index] = updatedCharacter;
+    renderCharacters(charactersData);
+    setStatus(`角色 ${index + 1} 的图片生成成功！`);
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
 
 loadCharacters();

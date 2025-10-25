@@ -41,6 +41,7 @@ type Config struct {
 	NovelFile      string      `json:"novelFile"`
 	LLM            LLMConfig   `json:"llm"`
 	Image          ImageConfig `json:"image"`
+	ImageEdit      ImageConfig `json:"imageEdit"`
 	Voice          VoiceConfig `json:"voice"`
 	VideoModel     string      `json:"videoModel"`
 	CharacterCount int         `json:"characterCount"`
@@ -73,6 +74,7 @@ type VoiceConfig struct {
 type CharacterProfile struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	ImagePath   string `json:"imagePath,omitempty"`
 }
 
 type Scene struct {
@@ -113,9 +115,11 @@ func main() {
 	mux.HandleFunc("/api/upload", uploadHandler)
 	mux.HandleFunc("/api/characters", charactersHandler)
 	mux.HandleFunc("/api/characters/extract", extractCharactersHandler)
+	mux.HandleFunc("/api/characters/generate-image", generateCharacterImageHandler)
 	mux.HandleFunc("/api/scenes", scenesHandler)
 	mux.HandleFunc("/api/scenes/extract", extractScenesHandler)
 	mux.HandleFunc("/api/scenes/generate-image", generateSceneImageHandler)
+	mux.HandleFunc("/api/scenes/generate-image-with-characters", generateSceneImageWithCharactersHandler)
 	mux.HandleFunc("/api/scenes/generate-audio", generateSceneAudioHandler)
 
 	log.Printf("Server listening on %s", listenAddr)
@@ -757,6 +761,339 @@ func requestSceneImage(ctx context.Context, cfg Config, scene Scene) (string, er
 	return "", fmt.Errorf("重试 %d 次后仍然失败: %w", maxRetries, lastErr)
 }
 
+func generateSceneImageWithCharactersHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[HTTP] %s %s - 来自 %s", r.Method, r.URL.Path, r.RemoteAddr)
+	if r.Method != http.MethodPost {
+		http.Error(w, "不支持的请求方法", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Index int `json:"index"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&payload); err != nil {
+		http.Error(w, "请求数据无效", http.StatusBadRequest)
+		return
+	}
+	if payload.Index < 0 {
+		http.Error(w, "场景索引无效", http.StatusBadRequest)
+		return
+	}
+
+	scenes, err := loadScenesData()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("读取场景失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if payload.Index >= len(scenes) {
+		http.Error(w, "场景索引超出范围", http.StatusBadRequest)
+		return
+	}
+
+	scene := scenes[payload.Index]
+	if strings.TrimSpace(scene.Description) == "" {
+		http.Error(w, "场景描述为空，无法生成图片", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[INFO] 开始使用人物图片生成场景 %d 的图片，场景标题: %s", payload.Index, scene.Title)
+
+	cfg, err := loadConfig()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("读取配置失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	characters, err := loadCharactersData()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("读取角色失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
+	defer cancel()
+
+	imagePath, err := generateSceneImageWithCharacters(ctx, cfg, scene, characters, payload.Index)
+	if err != nil {
+		log.Printf("[ERROR] 生成图片失败: %v", err)
+		http.Error(w, fmt.Sprintf("生成图片失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[SUCCESS] 成功生成场景图片: %s", imagePath)
+	scene.ImagePath = imagePath
+	scenes[payload.Index] = scene
+	if err := saveScenesData(scenes); err != nil {
+		http.Error(w, fmt.Sprintf("保存场景失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, scene)
+}
+
+func generateSceneImageWithCharacters(ctx context.Context, cfg Config, scene Scene, characters []CharacterProfile, index int) (string, error) {
+	if err := ensureDir(generatedImagesDir); err != nil {
+		return "", err
+	}
+
+	imageRef, err := requestSceneImageWithCharacters(ctx, cfg, scene, characters)
+	if err != nil {
+		return "", err
+	}
+
+	filename := fmt.Sprintf("scene_%02d_%d.png", index+1, time.Now().Unix())
+	absPath := filepath.Join(generatedImagesDir, filename)
+
+	if scene.ImagePath != "" {
+		removeGeneratedImage(scene.ImagePath)
+	}
+
+	if strings.HasPrefix(strings.ToLower(imageRef), "http://") || strings.HasPrefix(strings.ToLower(imageRef), "https://") {
+		if err := downloadToFile(ctx, imageRef, absPath); err != nil {
+			return "", err
+		}
+	} else {
+		if err := saveBase64ToFile(imageRef, absPath); err != nil {
+			return "", err
+		}
+	}
+
+	return generatedImagesURLPrefix + filename, nil
+}
+
+func requestSceneImageWithCharacters(ctx context.Context, cfg Config, scene Scene, allCharacters []CharacterProfile) (string, error) {
+	imageEditCfg := cfg.ImageEdit
+	if strings.TrimSpace(imageEditCfg.Model) == "" {
+		imageEditCfg.Model = "qwen-image-edit"
+	}
+	if strings.TrimSpace(imageEditCfg.BaseURL) == "" {
+		imageEditCfg.BaseURL = cfg.Image.BaseURL
+	}
+	if strings.TrimSpace(imageEditCfg.APIKey) == "" {
+		imageEditCfg.APIKey = cfg.Image.APIKey
+	}
+
+	if strings.TrimSpace(imageEditCfg.Model) == "" {
+		return "", errors.New("未配置图像编辑模型")
+	}
+	if strings.TrimSpace(imageEditCfg.BaseURL) == "" {
+		return "", errors.New("未配置图像编辑接口地址")
+	}
+	if strings.TrimSpace(imageEditCfg.APIKey) == "" {
+		return "", errors.New("未配置图像编辑 API Key")
+	}
+
+	base := strings.TrimRight(imageEditCfg.BaseURL, "/")
+	if base == "" {
+		return "", errors.New("图像编辑接口地址无效")
+	}
+
+	// 找出场景中的人物，并获取他们的图片
+	characterImages := make(map[string]string)
+	for _, charName := range scene.Characters {
+		for _, char := range allCharacters {
+			if char.Name == charName && char.ImagePath != "" {
+				// 读取图片并转换为base64
+				var imagePath string
+				if strings.HasPrefix(char.ImagePath, generatedImagesURLPrefix) {
+					// 路径格式: /generated/images/character_01_xxx.png
+					filename := strings.TrimPrefix(char.ImagePath, generatedImagesURLPrefix)
+					imagePath = filepath.Join(generatedImagesDir, filename)
+				} else if strings.HasPrefix(char.ImagePath, "/") {
+					// 绝对路径
+					imagePath = char.ImagePath
+				} else {
+					// 相对路径
+					imagePath = filepath.Join(generatedImagesDir, filepath.Base(char.ImagePath))
+				}
+
+				log.Printf("[INFO] 读取角色 %s 的图片: %s", charName, imagePath)
+				imageData, err := os.ReadFile(imagePath)
+				if err != nil {
+					log.Printf("[WARNING] 无法读取角色 %s 的图片: %v (路径: %s)", charName, err, imagePath)
+					continue
+				}
+				log.Printf("[INFO] 成功读取角色 %s 的图片，大小: %d 字节", charName, len(imageData))
+				base64Image := base64.StdEncoding.EncodeToString(imageData)
+				characterImages[charName] = base64Image
+				break
+			}
+		}
+	}
+
+	log.Printf("[INFO] 成功加载 %d 个角色的图片", len(characterImages))
+
+	// 构造content数组
+	contentArray := []map[string]any{}
+	textBuilder := strings.Builder{}
+
+	// 如果有人物图片，先添加图片和说明
+	if len(characterImages) > 0 {
+		imageIndex := 1
+		for charName, base64Image := range characterImages {
+			// 使用OpenAI vision API格式
+			contentArray = append(contentArray, map[string]any{
+				"type": "image_url",
+				"image_url": map[string]string{
+					"url": fmt.Sprintf("data:image/png;base64,%s", base64Image),
+				},
+			})
+			textBuilder.WriteString(fmt.Sprintf("图%d是%s。", imageIndex, charName))
+			imageIndex++
+		}
+	}
+
+	// 添加场景描述
+	textBuilder.WriteString("请根据上述人物形象，")
+	textBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	textBuilder.WriteString("场景描述：")
+	textBuilder.WriteString(scene.Description)
+
+	characterLine := strings.Join(scene.Characters, "、")
+	if characterLine != "" {
+		textBuilder.WriteString("。出场角色：")
+		textBuilder.WriteString(characterLine)
+	}
+
+	if len(scene.Dialogues) > 0 {
+		dialogueSnippet := strings.Join(scene.Dialogues, " ")
+		textBuilder.WriteString("。对话氛围参考：")
+		textBuilder.WriteString(dialogueSnippet)
+	}
+
+	textBuilder.WriteString("。画面需呈现明显的动漫风格、柔和光效与细腻线条。")
+
+	// 添加文本内容
+	contentArray = append(contentArray, map[string]any{
+		"type": "text",
+		"text": textBuilder.String(),
+	})
+
+	// 构造messages
+	messages := []map[string]any{
+		{
+			"role":    "user",
+			"content": contentArray,
+		},
+	}
+
+	// 使用OpenAI兼容格式（用于代理API）
+	reqBody := map[string]any{
+		"model":    imageEditCfg.Model,
+		"messages": messages,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("[图像编辑 API] 请求体大小: %d 字节", len(bodyBytes))
+	// 打印请求体（仅前1000字符，避免日志过长）
+	if len(bodyBytes) <= 1000 {
+		log.Printf("[图像编辑 API] 请求体: %s", string(bodyBytes))
+	} else {
+		log.Printf("[图像编辑 API] 请求体（前1000字符）: %s...", string(bodyBytes[:1000]))
+	}
+
+	// 使用重试机制
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			waitTime := time.Duration(attempt-1) * 2 * time.Second
+			log.Printf("[图像编辑 API] 第 %d 次重试，等待 %v...", attempt, waitTime)
+			time.Sleep(waitTime)
+		}
+
+		log.Printf("[图像编辑 API] 发起请求 (尝试 %d/%d): %s/v1/chat/completions", attempt, maxRetries, base)
+
+		result, err := doImageEditRequest(ctx, base, imageEditCfg.APIKey, bodyBytes)
+		if err == nil {
+			if attempt > 1 {
+				log.Printf("[图像编辑 API] 重试成功！")
+			}
+			return result, nil
+		}
+
+		lastErr = err
+		log.Printf("[图像编辑 API] 尝试 %d/%d 失败: %v", attempt, maxRetries, err)
+	}
+
+	return "", fmt.Errorf("重试 %d 次后仍然失败: %w", maxRetries, lastErr)
+}
+
+func doImageEditRequest(ctx context.Context, baseURL, apiKey string, bodyBytes []byte) (string, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
+	defer cancel()
+
+	client := &http.Client{
+		Timeout: 300 * time.Second,
+	}
+
+	apiURL := baseURL + "/v1/chat/completions"
+	request, err := http.NewRequestWithContext(reqCtx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Authorization", "Bearer "+apiKey)
+	request.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		log.Printf("[图像编辑 API] 错误响应 (状态码 %d): %s", resp.StatusCode, strings.TrimSpace(string(errBody)))
+		return "", fmt.Errorf("图像编辑服务请求失败 (状态码 %d): %s", resp.StatusCode, strings.TrimSpace(string(errBody)))
+	}
+
+	var response map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	// 打印完整响应以便调试
+	responseJSON, _ := json.Marshal(response)
+	log.Printf("[图像编辑 API] 响应内容: %s", string(responseJSON))
+
+	// 尝试OpenAI格式：从 choices[0].message.content 提取图片URL
+	if choices, ok := response["choices"].([]any); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]any); ok {
+			if message, ok := choice["message"].(map[string]any); ok {
+				if content, ok := message["content"].(string); ok {
+					// content可能直接是图片URL，也可能包含图片URL
+					imageURL, err := extractImageURL(content)
+					if err == nil {
+						return imageURL, nil
+					}
+					// 如果提取失败，尝试直接返回content
+					if strings.HasPrefix(strings.ToLower(content), "http") {
+						return content, nil
+					}
+				}
+			}
+		}
+	}
+
+	// 尝试通义千问格式：从 output.results[0].url 提取图片URL
+	if output, ok := response["output"].(map[string]any); ok {
+		if results, ok := output["results"].([]any); ok && len(results) > 0 {
+			if result, ok := results[0].(map[string]any); ok {
+				if url, ok := result["url"].(string); ok {
+					return url, nil
+				}
+			}
+		}
+	}
+
+	return "", errors.New("图像编辑服务未返回有效的图片URL")
+}
+
 func doImageRequest(ctx context.Context, baseURL, apiKey string, bodyBytes []byte) (string, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
@@ -902,7 +1239,7 @@ func requestSceneAudio(ctx context.Context, cfg Config, scene Scene) (audioResul
 	defer cancel()
 
 	client := &http.Client{Timeout: 2400 * time.Second}
-	apiURL := base + "/api/v1/services/aigc/multimodal-generation/generation"
+	apiURL := base + "/v1/chat/completions"
 	request, err := http.NewRequestWithContext(reqCtx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return audioResult{}, err
@@ -1558,4 +1895,189 @@ func mustFindProjectRoot() string {
 	}
 	log.Printf("未找到 go.mod，默认使用当前目录: %s", dir)
 	return dir
+}
+
+func generateCharacterImageHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[HTTP] %s %s - 来自 %s", r.Method, r.URL.Path, r.RemoteAddr)
+	if r.Method != http.MethodPost {
+		http.Error(w, "不支持的请求方法", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Index int `json:"index"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&payload); err != nil {
+		http.Error(w, "请求数据无效", http.StatusBadRequest)
+		return
+	}
+	if payload.Index < 0 {
+		http.Error(w, "角色索引无效", http.StatusBadRequest)
+		return
+	}
+
+	characters, err := loadCharactersData()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("读取角色失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if payload.Index >= len(characters) {
+		http.Error(w, "角色索引超出范围", http.StatusBadRequest)
+		return
+	}
+
+	character := characters[payload.Index]
+	if strings.TrimSpace(character.Description) == "" {
+		http.Error(w, "角色描述为空，无法生成图片", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[INFO] 开始生成角色 %d 的图片，角色名称: %s", payload.Index, character.Name)
+
+	cfg, err := loadConfig()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("读取配置失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
+	defer cancel()
+
+	imagePath, err := generateCharacterImage(ctx, cfg, character, payload.Index)
+	if err != nil {
+		log.Printf("[ERROR] 生成图片失败: %v", err)
+		http.Error(w, fmt.Sprintf("生成图片失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[SUCCESS] 成功生成角色图片: %s", imagePath)
+	character.ImagePath = imagePath
+	characters[payload.Index] = character
+	if err := saveCharactersData(characters); err != nil {
+		http.Error(w, fmt.Sprintf("保存角色失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, character)
+}
+
+func generateCharacterImage(ctx context.Context, cfg Config, character CharacterProfile, index int) (string, error) {
+	if err := ensureDir(generatedImagesDir); err != nil {
+		return "", err
+	}
+
+	imageRef, err := requestCharacterImage(ctx, cfg, character)
+	if err != nil {
+		return "", err
+	}
+
+	filename := fmt.Sprintf("character_%02d_%d.png", index+1, time.Now().Unix())
+	absPath := filepath.Join(generatedImagesDir, filename)
+
+	if character.ImagePath != "" {
+		removeGeneratedImage(character.ImagePath)
+	}
+
+	if strings.HasPrefix(strings.ToLower(imageRef), "http://") || strings.HasPrefix(strings.ToLower(imageRef), "https://") {
+		if err := downloadToFile(ctx, imageRef, absPath); err != nil {
+			return "", err
+		}
+	} else {
+		if err := saveBase64ToFile(imageRef, absPath); err != nil {
+			return "", err
+		}
+	}
+
+	return generatedImagesURLPrefix + filename, nil
+}
+
+func requestCharacterImage(ctx context.Context, cfg Config, character CharacterProfile) (string, error) {
+	imageCfg := cfg.Image
+	if strings.TrimSpace(imageCfg.Model) == "" {
+		imageCfg.Model = "gpt-4o-image"
+	}
+	if strings.TrimSpace(imageCfg.BaseURL) == "" {
+		imageCfg.BaseURL = cfg.LLM.BaseURL
+	}
+	if strings.TrimSpace(imageCfg.APIKey) == "" {
+		imageCfg.APIKey = cfg.LLM.APIKey
+	}
+
+	if strings.TrimSpace(imageCfg.Model) == "" {
+		return "", errors.New("未配置图像模型")
+	}
+	if strings.TrimSpace(imageCfg.BaseURL) == "" {
+		return "", errors.New("未配置图像接口地址")
+	}
+	if strings.TrimSpace(imageCfg.APIKey) == "" {
+		return "", errors.New("未配置图像 API Key")
+	}
+
+	base := strings.TrimRight(imageCfg.BaseURL, "/")
+	if base == "" {
+		return "", errors.New("图像接口地址无效")
+	}
+
+	promptBuilder := strings.Builder{}
+	promptBuilder.WriteString("以高质量动漫风格绘制角色立绘，要求：")
+	promptBuilder.WriteString("角色名称：")
+	promptBuilder.WriteString(character.Name)
+	promptBuilder.WriteString("。角色特征描述：")
+	promptBuilder.WriteString(character.Description)
+	promptBuilder.WriteString("。画面需呈现明显的动漫风格、清晰的角色特征、柔和光效与细腻线条，��合作为角色头像或立绘使用。")
+
+	messages := []map[string]any{
+		{
+			"role":    "user",
+			"content": promptBuilder.String(),
+		},
+	}
+
+	reqBody := map[string]any{
+		"model":    imageCfg.Model,
+		"messages": messages,
+		"n":        1,
+	}
+
+	if s := strings.TrimSpace(imageCfg.Size); s != "" {
+		reqBody["size"] = s
+	}
+	if q := strings.TrimSpace(imageCfg.Quality); q != "" {
+		reqBody["quality"] = q
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("[图像 API] 请求体大小: %d 字节", len(bodyBytes))
+
+	// 使用重试机制
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			// 指数退避：第2次重试等待2秒，第3次等待4秒
+			waitTime := time.Duration(attempt-1) * 2 * time.Second
+			log.Printf("[图像 API] 第 %d 次重试，等待 %v...", attempt, waitTime)
+			time.Sleep(waitTime)
+		}
+
+		log.Printf("[图像 API] 发起请求 (尝试 %d/%d): %s/v1/chat/completions", attempt, maxRetries, base)
+
+		result, err := doImageRequest(ctx, base, imageCfg.APIKey, bodyBytes)
+		if err == nil {
+			if attempt > 1 {
+				log.Printf("[图像 API] 重试成功！")
+			}
+			return result, nil
+		}
+
+		lastErr = err
+		log.Printf("[图像 API] 尝试 %d/%d 失败: %v", attempt, maxRetries, err)
+	}
+
+	return "", fmt.Errorf("重试 %d 次后仍然失败: %w", maxRetries, lastErr)
 }
