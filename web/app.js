@@ -19,6 +19,9 @@ const voiceLanguage = document.getElementById("voice-language");
 const videoModel = document.getElementById("video-model");
 const characterCount = document.getElementById("character-count");
 const sceneCount = document.getElementById("scene-count");
+const animeStyle = document.getElementById("anime-style");
+const customAnimeStyle = document.getElementById("custom-anime-style");
+const customStyleField = document.getElementById("custom-style-field");
 
 let currentFilePath = "";
 
@@ -63,6 +66,14 @@ async function loadConfig() {
     videoModel.value = data.videoModel ?? "";
     characterCount.value = data.characterCount ?? 0;
     sceneCount.value = data.sceneCount ?? 0;
+    animeStyle.value = data.animeStyle ?? "";
+    if (data.animeStyle === "custom" && data.customAnimeStyle) {
+      customAnimeStyle.value = data.customAnimeStyle;
+      customStyleField.style.display = "block";
+    } else {
+      customAnimeStyle.value = "";
+      customStyleField.style.display = "none";
+    }
     setUploadLabel(data.novelFile ?? "");
     setStatus("");
   } catch (err) {
@@ -117,6 +128,15 @@ uploadArea.addEventListener("drop", (event) => {
   }
 });
 
+animeStyle.addEventListener("change", () => {
+  if (animeStyle.value === "custom") {
+    customStyleField.style.display = "block";
+  } else {
+    customStyleField.style.display = "none";
+    customAnimeStyle.value = "";
+  }
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   saveBtn.disabled = true;
@@ -143,6 +163,8 @@ form.addEventListener("submit", async (event) => {
     videoModel: videoModel.value.trim(),
     characterCount: Number(characterCount.value || 0),
     sceneCount: Number(sceneCount.value || 0),
+    animeStyle: animeStyle.value.trim(),
+    customAnimeStyle: animeStyle.value === "custom" ? customAnimeStyle.value.trim() : "",
   };
 
   try {

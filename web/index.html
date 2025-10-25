@@ -88,6 +88,28 @@
             <span>视频模型</span>
             <input type="text" id="video-model" placeholder="例如：pika-labs">
           </label>
+
+          <label class="field">
+            <span>动漫风格</span>
+            <select id="anime-style">
+              <option value="">默认动漫风格</option>
+              <option value="traditional">传统日系动漫</option>
+              <option value="ghibli">吉卜力工作室风格</option>
+              <option value="shinkai">新海诚风格</option>
+              <option value="miyazaki">宫崎骏风格</option>
+              <option value="cyberpunk">赛博朋克风格</option>
+              <option value="watercolor">水彩画风格</option>
+              <option value="pixel">像素艺术风格</option>
+              <option value="gothic">暗黑哥特风格</option>
+              <option value="chibi">可爱Q版风格</option>
+              <option value="custom">自定义</option>
+            </select>
+          </label>
+
+          <label class="field" id="custom-style-field" style="display:none;">
+            <span>自定义风格</span>
+            <input type="text" id="custom-anime-style" placeholder="请描述您想要的风格">
+          </label>
         </div>
 
         <div class="actions">
