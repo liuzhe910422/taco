@@ -235,6 +235,34 @@ async function saveScenes() {
   }
 }
 
+function subscribeToProgress(taskId, onUpdate, onComplete, onError) {
+  const eventSource = new EventSource(`/api/progress/${taskId}`);
+  
+  eventSource.onmessage = (event) => {
+    try {
+      const update = JSON.parse(event.data);
+      if (update.error) {
+        eventSource.close();
+        if (onError) onError(update.error);
+      } else if (update.completed) {
+        eventSource.close();
+        if (onComplete) onComplete(update);
+      } else {
+        if (onUpdate) onUpdate(update);
+      }
+    } catch (err) {
+      console.error("解析进度更新失败:", err);
+    }
+  };
+  
+  eventSource.onerror = () => {
+    eventSource.close();
+    if (onError) onError("进度连接失败");
+  };
+  
+  return eventSource;
+}
+
 async function handleGenerateScene(index) {
   if (isBusy) {
     return;
@@ -248,22 +276,39 @@ async function handleGenerateScene(index) {
   }
 
   let navigated = false;
+  let eventSource = null;
+  const taskId = `image-${index}-${Date.now()}`;
+  
   try {
     setBusy(true);
-    setStatus(`正在生成场景 ${index + 1} 的图片...`);
+    setStatus(`正在准备生成场景 ${index + 1} 的图片...`);
+    
+    eventSource = subscribeToProgress(
+      taskId,
+      (update) => {
+        setStatus(update.message);
+      },
+      () => {
+        setStatus("图片生成完成，正在打开详情...");
+      },
+      (error) => {
+        setStatus(`生成失败: ${error}`, true);
+      }
+    );
+    
     const response = await fetch("/api/scenes/generate-image", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ index }),
+      body: JSON.stringify({ index, taskId }),
     });
     if (!response.ok) {
       const message = await response.text();
       throw new Error(message || "生成场景图片失败");
     }
-    const updatedScene = await response.json();
-    scenesData[index] = normalizeScene(updatedScene);
+    const result = await response.json();
+    scenesData[index] = normalizeScene(result.scene);
     setStatus("图片生成完成，正在打开详情...");
     navigated = true;
     setBusy(false);
@@ -272,6 +317,9 @@ async function handleGenerateScene(index) {
   } catch (err) {
     setStatus(err.message, true);
   } finally {
+    if (eventSource) {
+      eventSource.close();
+    }
     if (!navigated) {
       if (button) {
         button.disabled = previousDisabled;

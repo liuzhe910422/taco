@@ -186,6 +186,34 @@ closeBtn.addEventListener("click", () => {
   window.location.href = "scenes.html";
 });
 
+function subscribeToProgress(taskId, onUpdate, onComplete, onError) {
+  const eventSource = new EventSource(`/api/progress/${taskId}`);
+  
+  eventSource.onmessage = (event) => {
+    try {
+      const update = JSON.parse(event.data);
+      if (update.error) {
+        eventSource.close();
+        if (onError) onError(update.error);
+      } else if (update.completed) {
+        eventSource.close();
+        if (onComplete) onComplete(update);
+      } else {
+        if (onUpdate) onUpdate(update);
+      }
+    } catch (err) {
+      console.error("解析进度更新失败:", err);
+    }
+  };
+  
+  eventSource.onerror = () => {
+    eventSource.close();
+    if (onError) onError("进度连接失败");
+  };
+  
+  return eventSource;
+}
+
 if (generateAudioBtn) {
   generateAudioBtn.addEventListener("click", async (e) => {
     console.log("[生成声音] 按钮被点击");
@@ -204,21 +232,37 @@ if (generateAudioBtn) {
       return;
     }
 
+    let eventSource = null;
+    const taskId = `audio-${currentSceneIndex}-${Date.now()}`;
+    
     try {
       isGeneratingAudio = true;
       generateAudioBtn.disabled = true;
       const originalText = generateAudioBtn.textContent;
       generateAudioBtn.textContent = "生成中...";
-      setStatus(`正在生成场景 ${currentSceneIndex + 1} 的声音，请耐心等待...`);
+      setStatus(`正在准备生成场景 ${currentSceneIndex + 1} 的声音...`);
 
-      console.log("[生成声音] 发送 API 请求:", { index: currentSceneIndex });
+      eventSource = subscribeToProgress(
+        taskId,
+        (update) => {
+          setStatus(update.message);
+        },
+        () => {
+          setStatus("语音生成完成！");
+        },
+        (error) => {
+          setStatus(`生成失败: ${error}`, true);
+        }
+      );
+
+      console.log("[生成声音] 发送 API 请求:", { index: currentSceneIndex, taskId });
 
       const response = await fetch("/api/scenes/generate-audio", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ index: currentSceneIndex }),
+        body: JSON.stringify({ index: currentSceneIndex, taskId }),
       });
 
       console.log("[生成声音] API 响应状态:", response.status);
@@ -229,7 +273,8 @@ if (generateAudioBtn) {
         throw new Error(message || "生成声音失败");
       }
 
-      const updatedScene = normalizeScene(await response.json());
+      const result = await response.json();
+      const updatedScene = normalizeScene(result.scene);
       console.log("[生成声音] 生成成功，音频路径:", updatedScene.audioPath);
       currentScene = updatedScene;
       renderAudio(updatedScene);
@@ -241,6 +286,9 @@ if (generateAudioBtn) {
         generateAudioBtn.disabled = false;
       }
     } finally {
+      if (eventSource) {
+        eventSource.close();
+      }
       if (generateAudioBtn) {
         generateAudioBtn.textContent = currentScene?.audioPath ? "重新生成声音" : "生成声音";
       }
