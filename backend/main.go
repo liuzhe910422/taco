@@ -46,6 +46,7 @@ type Config struct {
 	VideoModel     string      `json:"videoModel"`
 	CharacterCount int         `json:"characterCount"`
 	SceneCount     int         `json:"sceneCount"`
+	AnimeStyle     string      `json:"animeStyle"`
 }
 
 type LLMConfig struct {
@@ -692,7 +693,13 @@ func requestSceneImage(ctx context.Context, cfg Config, scene Scene) (string, er
 	}
 
 	promptBuilder := strings.Builder{}
-	promptBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	if animeStyle := strings.TrimSpace(cfg.AnimeStyle); animeStyle != "" {
+		promptBuilder.WriteString("以")
+		promptBuilder.WriteString(animeStyle)
+		promptBuilder.WriteString("的高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	} else {
+		promptBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	}
 	promptBuilder.WriteString("场景描述：")
 	promptBuilder.WriteString(scene.Description)
 	if characterLine != "" {
@@ -945,7 +952,13 @@ func requestSceneImageWithCharacters(ctx context.Context, cfg Config, scene Scen
 
 	// 添加场景描述
 	textBuilder.WriteString("请根据上述人物形象，")
-	textBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	if animeStyle := strings.TrimSpace(cfg.AnimeStyle); animeStyle != "" {
+		textBuilder.WriteString("以")
+		textBuilder.WriteString(animeStyle)
+		textBuilder.WriteString("的高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	} else {
+		textBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	}
 	textBuilder.WriteString("场景描述：")
 	textBuilder.WriteString(scene.Description)
 
@@ -2019,7 +2032,13 @@ func requestCharacterImage(ctx context.Context, cfg Config, character CharacterP
 	}
 
 	promptBuilder := strings.Builder{}
-	promptBuilder.WriteString("以高质量动漫风格绘制角色立绘，要求：")
+	if animeStyle := strings.TrimSpace(cfg.AnimeStyle); animeStyle != "" {
+		promptBuilder.WriteString("以")
+		promptBuilder.WriteString(animeStyle)
+		promptBuilder.WriteString("的高质量动漫风格绘制角色立绘，要求：")
+	} else {
+		promptBuilder.WriteString("以高质量动漫风格绘制角色立绘，要求：")
+	}
 	promptBuilder.WriteString("角色名称：")
 	promptBuilder.WriteString(character.Name)
 	promptBuilder.WriteString("。角色特征描述：")

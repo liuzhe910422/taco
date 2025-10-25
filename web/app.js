@@ -19,6 +19,7 @@ const voiceLanguage = document.getElementById("voice-language");
 const videoModel = document.getElementById("video-model");
 const characterCount = document.getElementById("character-count");
 const sceneCount = document.getElementById("scene-count");
+const animeStyle = document.getElementById("anime-style");
 
 let currentFilePath = "";
 
@@ -63,6 +64,7 @@ async function loadConfig() {
     videoModel.value = data.videoModel ?? "";
     characterCount.value = data.characterCount ?? 0;
     sceneCount.value = data.sceneCount ?? 0;
+    animeStyle.value = data.animeStyle ?? "";
     setUploadLabel(data.novelFile ?? "");
     setStatus("");
   } catch (err) {
@@ -143,6 +145,7 @@ form.addEventListener("submit", async (event) => {
     videoModel: videoModel.value.trim(),
     characterCount: Number(characterCount.value || 0),
     sceneCount: Number(sceneCount.value || 0),
+    animeStyle: animeStyle.value.trim(),
   };
 
   try {
