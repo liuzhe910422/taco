@@ -61,7 +61,32 @@ function renderScenes(scenes) {
     item.className = "scene-item";
 
     const header = document.createElement("header");
-    header.textContent = `场景 ${index + 1}`;
+    header.style.display = "flex";
+    header.style.alignItems = "center";
+    header.style.gap = "8px";
+    
+    const headerText = document.createElement("span");
+    headerText.textContent = `场景 ${index + 1}`;
+    header.appendChild(headerText);
+    
+    const statusContainer = document.createElement("span");
+    statusContainer.style.display = "flex";
+    statusContainer.style.gap = "4px";
+    statusContainer.style.marginLeft = "auto";
+    
+    const imageStatus = document.createElement("span");
+    imageStatus.style.fontSize = "20px";
+    imageStatus.title = scene.imagePath ? "图片已生成" : "图片未生成";
+    imageStatus.textContent = scene.imagePath ? "🖼️" : "⬜";
+    statusContainer.appendChild(imageStatus);
+    
+    const audioStatus = document.createElement("span");
+    audioStatus.style.fontSize = "20px";
+    audioStatus.title = scene.audioPath ? "音频已生成" : "音频未生成";
+    audioStatus.textContent = scene.audioPath ? "🔊" : "🔇";
+    statusContainer.appendChild(audioStatus);
+    
+    header.appendChild(statusContainer);
     item.appendChild(header);
 
     const titleLabel = document.createElement("label");
