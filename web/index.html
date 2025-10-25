@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Taco - 小说到动漫生成器</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <header class="brand">Taco 动漫生成器</header>
+    <main class="card">
+      <form id="config-form">
+        <section class="upload-area" id="upload-area">
+          <input type="file" id="novel-input" accept=".txt,.md,.pdf,.doc,.docx" hidden>
+          <div class="upload-content">
+            <span class="upload-label" id="upload-label">添加文件</span>
+            <span class="upload-plus">+</span>
+          </div>
+        </section>
+
+        <div class="form-grid">
+          <label class="field">
+            <span>LLM 模型</span>
+            <input type="text" id="llm-model" placeholder="例如：gpt-4">
+          </label>
+
+          <label class="field">
+            <span>LLM 接口地址</span>
+            <input type="text" id="llm-base-url" placeholder="例如：https://api.openai.com">
+          </label>
+
+          <label class="field">
+            <span>LLM API Key</span>
+            <input type="password" id="llm-api-key" placeholder="请输入密钥">
+          </label>
+
+          <label class="field">
+            <span>人物数</span>
+            <input type="number" id="character-count" min="0" step="1">
+          </label>
+
+          <label class="field">
+            <span>Image 模型</span>
+            <input type="text" id="image-model" placeholder="例如：gpt-4o-image">
+          </label>
+
+          <label class="field">
+            <span>Image 接口地址</span>
+            <input type="text" id="image-base-url" placeholder="例如：https://api.openai.com">
+          </label>
+
+          <label class="field">
+            <span>Image API Key</span>
+            <input type="password" id="image-api-key" placeholder="请输入密钥">
+          </label>
+
+          <label class="field">
+            <span>语音模型</span>
+            <input type="text" id="voice-model" placeholder="例如：qwen3-tts-flash">
+          </label>
+
+          <label class="field">
+            <span>语音接口地址</span>
+            <input type="text" id="voice-base-url" placeholder="例如：https://dashscope.aliyuncs.com">
+          </label>
+
+          <label class="field">
+            <span>语音 API Key</span>
+            <input type="password" id="voice-api-key" placeholder="请输入密钥">
+          </label>
+
+          <label class="field">
+            <span>发音人</span>
+            <input type="text" id="voice-speaker" placeholder="例如：Cherry">
+          </label>
+
+          <label class="field">
+            <span>语言类型</span>
+            <input type="text" id="voice-language" placeholder="例如：Chinese">
+          </label>
+
+          <label class="field">
+            <span>场景数</span>
+            <input type="number" id="scene-count" min="0" step="1">
+          </label>
+
+          <label class="field">
+            <span>视频模型</span>
+            <input type="text" id="video-model" placeholder="例如：pika-labs">
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="submit" id="save-btn">开始生成</button>
+        </div>
+      </form>
+      <p class="status" id="status"></p>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
