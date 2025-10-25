@@ -5,3 +5,6 @@
 __debug_*
 
 backend/config/config.json
+*.log
+taco-server
+taco
