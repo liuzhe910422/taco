@@ -204,22 +204,56 @@ if (generateAudioBtn) {
       return;
     }
 
+    const taskId = `audio_${currentSceneIndex}_${Date.now()}`;
+    let eventSource = null;
+
     try {
       isGeneratingAudio = true;
       generateAudioBtn.disabled = true;
       const originalText = generateAudioBtn.textContent;
       generateAudioBtn.textContent = "生成中...";
-      setStatus(`正在生成场景 ${currentSceneIndex + 1} 的声音，请耐心等待...`);
+      setStatus(`正在准备生成场景 ${currentSceneIndex + 1} 的声音...`);
 
-      console.log("[生成声音] 发送 API 请求:", { index: currentSceneIndex });
+      console.log("[生成声音] 创建 SSE 连接，任务ID:", taskId);
+
+      eventSource = new EventSource(`/api/progress/${taskId}`);
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const progress = JSON.parse(event.data);
+          console.log("[生成声音] 进度更新:", progress);
+          const statusMessages = {
+            preparing_audio: "准备语音合成",
+            generating_audio: "生成音频中",
+            downloading_audio: "下载音频中",
+            completed: "生成完成",
+            error: progress.message || "生成失败"
+          };
+          const message = statusMessages[progress.status] || progress.message;
+          setStatus(`场景 ${currentSceneIndex + 1}: ${message}`, progress.status === "error");
+        } catch (err) {
+          console.error("解析进度更新失败:", err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.log("[生成声音] SSE 连接错误或关闭");
+        eventSource.close();
+      };
+
+      console.log("[生成声音] 发送 API 请求:", { index: currentSceneIndex, taskId });
 
       const response = await fetch("/api/scenes/generate-audio", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ index: currentSceneIndex }),
+        body: JSON.stringify({ index: currentSceneIndex, taskId }),
       });
+
+      if (eventSource) {
+        eventSource.close();
+      }
 
       console.log("[生成声音] API 响应状态:", response.status);
 
@@ -241,6 +275,9 @@ if (generateAudioBtn) {
         generateAudioBtn.disabled = false;
       }
     } finally {
+      if (eventSource) {
+        eventSource.close();
+      }
       if (generateAudioBtn) {
         generateAudioBtn.textContent = currentScene?.audioPath ? "重新生成声音" : "生成声音";
       }
