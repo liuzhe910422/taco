@@ -430,11 +430,14 @@ async function generateAllSceneImages() {
       progressText.textContent = `${i + 1}/${total}`;
     }
 
+    setBusy(false);
     await loadScenes();
     setStatus(`所有场景图片生成完成！成功: ${successCount}, 跳过: ${skipCount}, 失败: ${total - successCount - skipCount}`);
+    setTimeout(() => {
+      progressContainer.style.display = "none";
+    }, 2000);
   } catch (err) {
     setStatus(err.message, true);
-  } finally {
     setBusy(false);
     setTimeout(() => {
       progressContainer.style.display = "none";

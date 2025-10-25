@@ -274,10 +274,14 @@ async function generateAllCharacterImages() {
       progressText.textContent = `${i + 1}/${total}`;
     }
 
+    setBusy(false);
+    await loadCharacters();
     setStatus(`所有角色图片生成完成！成功: ${successCount}, 跳过: ${skipCount}, 失败: ${total - successCount - skipCount}`);
+    setTimeout(() => {
+      progressContainer.style.display = "none";
+    }, 2000);
   } catch (err) {
     setStatus(err.message, true);
-  } finally {
     setBusy(false);
     setTimeout(() => {
       progressContainer.style.display = "none";
