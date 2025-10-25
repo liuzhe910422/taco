@@ -1,0 +1,31 @@
+{
+  "novelFile": "",
+  "llm": {
+    "model": "gpt-4o-mini",
+    "baseUrl": "https://apiqik.apifox.cn/7311242m0",
+    "apiKey": ""
+  },
+  "image": {
+    "model": "gpt-4o-image",
+    "baseUrl": "https://apiqik.apifox.cn/7311242m0",
+    "apiKey": "",
+    "size": "1024x1024",
+    "quality": "standard"
+  },
+  "imageEdit": {
+    "model": "",
+    "baseUrl": "",
+    "apiKey": ""
+  },
+  "voice": {
+    "model": "qwen3-tts-flash",
+    "baseUrl": "https://dashscope.aliyuncs.com",
+    "apiKey": "",
+    "voice": "Cherry",
+    "language": "Chinese",
+    "outputDir": "generated/audio"
+  },
+  "videoModel": "pika-labs",
+  "characterCount": 2,
+  "sceneCount": 5
+}
