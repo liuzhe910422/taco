@@ -227,40 +227,54 @@ async function generateAllCharacterImages() {
     progressText.textContent = "0%";
     setStatus("正在批量生成角色图片...");
 
-    const response = await fetch("/api/characters/generate-all", {
-      method: "POST",
-    });
+    const total = charactersData.length;
+    let successCount = 0;
+    let skipCount = 0;
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || "批量生成失败");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = JSON.parse(line.slice(6));
-          const percent = Math.round((data.current / data.total) * 100);
-          progressBar.style.width = percent + "%";
-          progressText.textContent = `${data.current}/${data.total}`;
-          setStatus(data.status);
-        }
+    for (let i = 0; i < total; i++) {
+      const character = charactersData[i];
+      
+      if (!character.description || character.description.trim() === "") {
+        skipCount++;
+        const percent = Math.round(((i + 1) / total) * 100);
+        progressBar.style.width = percent + "%";
+        progressText.textContent = `${i + 1}/${total}`;
+        setStatus(`角色 ${i + 1} (${character.name}) 描述为空，跳过`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
       }
+
+      setStatus(`正在生成角色 ${i + 1}/${total}: ${character.name}`);
+
+      try {
+        const response = await fetch("/api/characters/generate-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ index: i }),
+        });
+
+        if (response.ok) {
+          const updatedCharacter = await response.json();
+          charactersData[i] = updatedCharacter;
+          successCount++;
+          setStatus(`角色 ${i + 1}/${total} (${character.name}) 生成成功`);
+        } else {
+          const text = await response.text();
+          setStatus(`角色 ${i + 1} (${character.name}) 生成失败: ${text}`);
+        }
+      } catch (err) {
+        setStatus(`角色 ${i + 1} (${character.name}) 生成失败: ${err.message}`);
+      }
+
+      const percent = Math.round(((i + 1) / total) * 100);
+      progressBar.style.width = percent + "%";
+      progressText.textContent = `${i + 1}/${total}`;
     }
 
     await loadCharacters();
-    setStatus("所有角色图片生成完成！");
+    setStatus(`所有角色图片生成完成！成功: ${successCount}, 跳过: ${skipCount}, 失败: ${total - successCount - skipCount}`);
   } catch (err) {
     setStatus(err.message, true);
   } finally {
