@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -91,6 +92,28 @@ type audioResult struct {
 	Extension string
 }
 
+type ProgressUpdate struct {
+	TaskID  string `json:"taskId"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type progressTracker struct {
+	mu       sync.RWMutex
+	tasks    map[string]*taskProgress
+	channels map[string][]chan ProgressUpdate
+}
+
+type taskProgress struct {
+	Status  string
+	Message string
+}
+
+var progressManager = &progressTracker{
+	tasks:    make(map[string]*taskProgress),
+	channels: make(map[string][]chan ProgressUpdate),
+}
+
 func main() {
 	if _, err := loadConfig(); err != nil {
 		log.Fatalf("initialise config: %v", err)
@@ -117,6 +140,7 @@ func main() {
 	mux.HandleFunc("/api/scenes/extract", extractScenesHandler)
 	mux.HandleFunc("/api/scenes/generate-image", generateSceneImageHandler)
 	mux.HandleFunc("/api/scenes/generate-audio", generateSceneAudioHandler)
+	mux.HandleFunc("/api/progress/", progressSSEHandler)
 
 	log.Printf("Server listening on %s", listenAddr)
 	if err := http.ListenAndServe(listenAddr, mux); err != nil {
@@ -624,15 +648,20 @@ func callLLMForScenes(ctx context.Context, cfg Config, novel string, characters 
 	return scenes, nil
 }
 
-func generateSceneImage(ctx context.Context, cfg Config, scene Scene, index int) (string, error) {
+func generateSceneImage(ctx context.Context, cfg Config, scene Scene, index int, taskID string) (string, error) {
 	if err := ensureDir(generatedImagesDir); err != nil {
 		return "", err
 	}
 
-	imageRef, err := requestSceneImage(ctx, cfg, scene)
+	progressManager.updateProgress(taskID, "extracting_scene", "提取场景信息中")
+
+	imageRef, err := requestSceneImage(ctx, cfg, scene, taskID)
 	if err != nil {
+		progressManager.updateProgress(taskID, "error", fmt.Sprintf("生成失败: %v", err))
 		return "", err
 	}
+
+	progressManager.updateProgress(taskID, "downloading_image", "下载图片中")
 
 	filename := fmt.Sprintf("scene_%02d_%d.png", index+1, time.Now().Unix())
 	absPath := filepath.Join(generatedImagesDir, filename)
@@ -643,18 +672,21 @@ func generateSceneImage(ctx context.Context, cfg Config, scene Scene, index int)
 
 	if strings.HasPrefix(strings.ToLower(imageRef), "http://") || strings.HasPrefix(strings.ToLower(imageRef), "https://") {
 		if err := downloadToFile(ctx, imageRef, absPath); err != nil {
+			progressManager.updateProgress(taskID, "error", fmt.Sprintf("下载失败: %v", err))
 			return "", err
 		}
 	} else {
 		if err := saveBase64ToFile(imageRef, absPath); err != nil {
+			progressManager.updateProgress(taskID, "error", fmt.Sprintf("保存失败: %v", err))
 			return "", err
 		}
 	}
 
+	progressManager.updateProgress(taskID, "completed", "生成完成")
 	return generatedImagesURLPrefix + filename, nil
 }
 
-func requestSceneImage(ctx context.Context, cfg Config, scene Scene) (string, error) {
+func requestSceneImage(ctx context.Context, cfg Config, scene Scene, taskID string) (string, error) {
 	imageCfg := cfg.Image
 	if strings.TrimSpace(imageCfg.Model) == "" {
 		imageCfg.Model = "gpt-4o-image"
@@ -728,13 +760,13 @@ func requestSceneImage(ctx context.Context, cfg Config, scene Scene) (string, er
 
 	log.Printf("[图像 API] 请求体大小: %d 字节", len(bodyBytes))
 
-	// 使用重试机制
+	progressManager.updateProgress(taskID, "generating_image", "生成图片中")
+
 	maxRetries := 3
 	var lastErr error
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		if attempt > 1 {
-			// 指数退避：第2次重试等待2秒，第3次等待4秒
 			waitTime := time.Duration(attempt-1) * 2 * time.Second
 			log.Printf("[图像 API] 第 %d 次重试，等待 %v...", attempt, waitTime)
 			time.Sleep(waitTime)
@@ -822,15 +854,20 @@ func buildSceneSpeechText(scene Scene) string {
 	return strings.TrimSpace(scene.Title)
 }
 
-func generateSceneAudio(ctx context.Context, cfg Config, scene Scene, index int) (string, error) {
+func generateSceneAudio(ctx context.Context, cfg Config, scene Scene, index int, taskID string) (string, error) {
 	if err := ensureDir(generatedAudioDir); err != nil {
 		return "", err
 	}
 
-	result, err := requestSceneAudio(ctx, cfg, scene)
+	progressManager.updateProgress(taskID, "preparing_audio", "准备语音合成")
+
+	result, err := requestSceneAudio(ctx, cfg, scene, taskID)
 	if err != nil {
+		progressManager.updateProgress(taskID, "error", fmt.Sprintf("生成失败: %v", err))
 		return "", err
 	}
+
+	progressManager.updateProgress(taskID, "downloading_audio", "下载音频中")
 
 	ext := ".mp3"
 	if result.Extension != "" {
@@ -845,18 +882,21 @@ func generateSceneAudio(ctx context.Context, cfg Config, scene Scene, index int)
 
 	if result.IsURL {
 		if err := downloadToFile(ctx, result.Source, absPath); err != nil {
+			progressManager.updateProgress(taskID, "error", fmt.Sprintf("下载失败: %v", err))
 			return "", err
 		}
 	} else {
 		if err := saveBase64ToFile(result.Source, absPath); err != nil {
+			progressManager.updateProgress(taskID, "error", fmt.Sprintf("保存失败: %v", err))
 			return "", err
 		}
 	}
 
+	progressManager.updateProgress(taskID, "completed", "生成完成")
 	return generatedAudioURLPrefix + filename, nil
 }
 
-func requestSceneAudio(ctx context.Context, cfg Config, scene Scene) (audioResult, error) {
+func requestSceneAudio(ctx context.Context, cfg Config, scene Scene, taskID string) (audioResult, error) {
 	voiceCfg := cfg.Voice
 	if strings.TrimSpace(voiceCfg.Model) == "" {
 		return audioResult{}, errors.New("未配置语音模型")
@@ -897,6 +937,8 @@ func requestSceneAudio(ctx context.Context, cfg Config, scene Scene) (audioResul
 	if err != nil {
 		return audioResult{}, err
 	}
+
+	progressManager.updateProgress(taskID, "generating_audio", "生成音频中")
 
 	reqCtx, cancel := context.WithTimeout(ctx, 240*time.Second)
 	defer cancel()
@@ -1324,7 +1366,8 @@ func generateSceneImageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		Index int `json:"index"`
+		Index  int    `json:"index"`
+		TaskID string `json:"taskId"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&payload); err != nil {
 		http.Error(w, "请求数据无效", http.StatusBadRequest)
@@ -1333,6 +1376,9 @@ func generateSceneImageHandler(w http.ResponseWriter, r *http.Request) {
 	if payload.Index < 0 {
 		http.Error(w, "场景索引无效", http.StatusBadRequest)
 		return
+	}
+	if payload.TaskID == "" {
+		payload.TaskID = fmt.Sprintf("image_%d_%d", payload.Index, time.Now().UnixNano())
 	}
 
 	scenes, err := loadScenesData()
@@ -1351,7 +1397,7 @@ func generateSceneImageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[INFO] 开始生成场景 %d 的图片，场景标题: %s", payload.Index, scene.Title)
+	log.Printf("[INFO] 开始生成场景 %d 的图片，场景标题: %s, 任务ID: %s", payload.Index, scene.Title, payload.TaskID)
 
 	cfg, err := loadConfig()
 	if err != nil {
@@ -1362,10 +1408,11 @@ func generateSceneImageHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
 	defer cancel()
 
-	imagePath, err := generateSceneImage(ctx, cfg, scene, payload.Index)
+	imagePath, err := generateSceneImage(ctx, cfg, scene, payload.Index, payload.TaskID)
 	if err != nil {
 		log.Printf("[ERROR] 生成图片失败: %v", err)
 		http.Error(w, fmt.Sprintf("生成图片失败: %v", err), http.StatusInternalServerError)
+		progressManager.cleanup(payload.TaskID)
 		return
 	}
 
@@ -1374,9 +1421,11 @@ func generateSceneImageHandler(w http.ResponseWriter, r *http.Request) {
 	scenes[payload.Index] = scene
 	if err := saveScenesData(scenes); err != nil {
 		http.Error(w, fmt.Sprintf("保存场景失败: %v", err), http.StatusInternalServerError)
+		progressManager.cleanup(payload.TaskID)
 		return
 	}
 
+	progressManager.cleanup(payload.TaskID)
 	writeJSON(w, scene)
 }
 
@@ -1388,7 +1437,8 @@ func generateSceneAudioHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		Index int `json:"index"`
+		Index  int    `json:"index"`
+		TaskID string `json:"taskId"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&payload); err != nil {
 		http.Error(w, "请求数据无效", http.StatusBadRequest)
@@ -1397,6 +1447,9 @@ func generateSceneAudioHandler(w http.ResponseWriter, r *http.Request) {
 	if payload.Index < 0 {
 		http.Error(w, "场景索引无效", http.StatusBadRequest)
 		return
+	}
+	if payload.TaskID == "" {
+		payload.TaskID = fmt.Sprintf("audio_%d_%d", payload.Index, time.Now().UnixNano())
 	}
 
 	scenes, err := loadScenesData()
@@ -1425,13 +1478,16 @@ func generateSceneAudioHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[INFO] 开始生成场景 %d 的音频，任务ID: %s", payload.Index, payload.TaskID)
+
 	ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
 	defer cancel()
 
-	audioPath, err := generateSceneAudio(ctx, cfg, scene, payload.Index)
+	audioPath, err := generateSceneAudio(ctx, cfg, scene, payload.Index, payload.TaskID)
 	if err != nil {
 		log.Printf("[ERROR] 生成语音失败: %v", err)
 		http.Error(w, fmt.Sprintf("生成语音失败: %v", err), http.StatusInternalServerError)
+		progressManager.cleanup(payload.TaskID)
 		return
 	}
 
@@ -1439,9 +1495,11 @@ func generateSceneAudioHandler(w http.ResponseWriter, r *http.Request) {
 	scenes[payload.Index] = scene
 	if err := saveScenesData(scenes); err != nil {
 		http.Error(w, fmt.Sprintf("保存场景失败: %v", err), http.StatusInternalServerError)
+		progressManager.cleanup(payload.TaskID)
 		return
 	}
 
+	progressManager.cleanup(payload.TaskID)
 	writeJSON(w, scene)
 }
 
@@ -1558,4 +1616,117 @@ func mustFindProjectRoot() string {
 	}
 	log.Printf("未找到 go.mod，默认使用当前目录: %s", dir)
 	return dir
+}
+
+func (pt *progressTracker) updateProgress(taskID, status, message string) {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	pt.tasks[taskID] = &taskProgress{
+		Status:  status,
+		Message: message,
+	}
+
+	update := ProgressUpdate{
+		TaskID:  taskID,
+		Status:  status,
+		Message: message,
+	}
+
+	if channels, ok := pt.channels[taskID]; ok {
+		for _, ch := range channels {
+			select {
+			case ch <- update:
+			default:
+			}
+		}
+	}
+
+	log.Printf("[进度更新] 任务 %s: %s - %s", taskID, status, message)
+}
+
+func (pt *progressTracker) subscribe(taskID string) chan ProgressUpdate {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	ch := make(chan ProgressUpdate, 10)
+	pt.channels[taskID] = append(pt.channels[taskID], ch)
+	return ch
+}
+
+func (pt *progressTracker) unsubscribe(taskID string, ch chan ProgressUpdate) {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	if channels, ok := pt.channels[taskID]; ok {
+		for i, c := range channels {
+			if c == ch {
+				pt.channels[taskID] = append(channels[:i], channels[i+1:]...)
+				break
+			}
+		}
+	}
+	close(ch)
+}
+
+func (pt *progressTracker) cleanup(taskID string) {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	delete(pt.tasks, taskID)
+	if channels, ok := pt.channels[taskID]; ok {
+		for _, ch := range channels {
+			close(ch)
+		}
+		delete(pt.channels, taskID)
+	}
+}
+
+func progressSSEHandler(w http.ResponseWriter, r *http.Request) {
+	taskID := strings.TrimPrefix(r.URL.Path, "/api/progress/")
+	if taskID == "" {
+		http.Error(w, "缺少任务 ID", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "不支持流式传输", http.StatusInternalServerError)
+		return
+	}
+
+	progressChan := progressManager.subscribe(taskID)
+	defer progressManager.unsubscribe(taskID, progressChan)
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case update, ok := <-progressChan:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(update)
+			if err != nil {
+				log.Printf("序列化进度更新失败: %v", err)
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+
+			if update.Status == "completed" || update.Status == "error" {
+				time.Sleep(100 * time.Millisecond)
+				return
+			}
+		case <-time.After(30 * time.Second):
+			fmt.Fprintf(w, ": keepalive\n\n")
+			flusher.Flush()
+		}
+	}
 }

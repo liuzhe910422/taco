@@ -248,16 +248,48 @@ async function handleGenerateScene(index) {
   }
 
   let navigated = false;
+  const taskId = `image_${index}_${Date.now()}`;
+  let eventSource = null;
+
   try {
     setBusy(true);
-    setStatus(`正在生成场景 ${index + 1} 的图片...`);
+    setStatus(`正在准备生成场景 ${index + 1} 的图片...`);
+
+    eventSource = new EventSource(`/api/progress/${taskId}`);
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const progress = JSON.parse(event.data);
+        const statusMessages = {
+          extracting_scene: "提取场景信息中",
+          generating_image: "生成图片中",
+          downloading_image: "下载图片中",
+          completed: "生成完成",
+          error: progress.message || "生成失败"
+        };
+        const message = statusMessages[progress.status] || progress.message;
+        setStatus(`场景 ${index + 1}: ${message}`, progress.status === "error");
+      } catch (err) {
+        console.error("解析进度更新失败:", err);
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+
     const response = await fetch("/api/scenes/generate-image", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ index }),
+      body: JSON.stringify({ index, taskId }),
     });
+    
+    if (eventSource) {
+      eventSource.close();
+    }
+
     if (!response.ok) {
       const message = await response.text();
       throw new Error(message || "生成场景图片失败");
@@ -272,6 +304,9 @@ async function handleGenerateScene(index) {
   } catch (err) {
     setStatus(err.message, true);
   } finally {
+    if (eventSource) {
+      eventSource.close();
+    }
     if (!navigated) {
       if (button) {
         button.disabled = previousDisabled;
