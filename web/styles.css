@@ -305,6 +305,39 @@ body {
   justify-content: flex-end;
 }
 
+.character-upload-btn {
+  background: #52c41a;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.character-upload-btn:hover {
+  background: #49a818;
+  box-shadow: 0 10px 24px rgba(82, 196, 26, 0.25);
+  transform: translateY(-1px);
+}
+
+.character-upload-btn:active:not(:disabled) {
+  background: #3f9015;
+  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.2);
+  transform: translateY(1px);
+}
+
+.character-upload-btn:disabled {
+  background: #b7eb8f;
+  color: #389e0d;
+  cursor: not-allowed;
+  opacity: 0.7;
+  box-shadow: none;
+  transform: none;
+}
+
 .character-generate-btn {
   background: #688bff;
   color: #ffffff;
