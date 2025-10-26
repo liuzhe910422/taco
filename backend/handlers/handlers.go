@@ -312,7 +312,7 @@ func GenerateCharacterImageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 600*time.Second)
 	defer cancel()
 
 	imagePath, err := image.GenerateCharacterImage(ctx, cfg, character, payload.Index)
@@ -376,7 +376,7 @@ func GenerateSceneImageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 600*time.Second)
 	defer cancel()
 
 	imagePath, err := image.GenerateSceneImage(ctx, cfg, scene, payload.Index)
@@ -446,7 +446,7 @@ func GenerateSceneImageWithCharactersHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 600*time.Second)
 	defer cancel()
 
 	imagePath, err := image.GenerateSceneImageWithCharacters(ctx, cfg, scene, characters, payload.Index)
@@ -512,7 +512,7 @@ func GenerateSceneAudioHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 600*time.Second)
 	defer cancel()
 
 	audioPath, err := audio.GenerateSceneAudio(ctx, cfg, scene, payload.Index)

@@ -97,18 +97,35 @@ body {
   font-size: 16px;
 }
 
-.field input {
+.field input,
+.field select {
   border: 1px solid #d5d6e2;
   border-radius: 12px;
   padding: 12px 14px;
   font-size: 16px;
   outline: none;
   transition: border 0.2s, box-shadow 0.2s;
+  background-color: #ffffff;
+  font-family: inherit;
 }
 
-.field input:focus {
+.field select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%233b3f5c' d='M1.41 0L6 4.59L10.59 0L12 1.41L6 7.41L0 1.41L1.41 0Z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 40px;
+}
+
+.field input:focus,
+.field select:focus {
   border-color: #688bff;
   box-shadow: 0 0 0 3px rgba(104, 139, 255, 0.25);
+}
+
+.field select:hover {
+  border-color: #688bff;
 }
 
 .actions {

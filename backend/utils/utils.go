@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func EnsureDir(path string) error {
@@ -58,7 +59,10 @@ func DownloadToFile(ctx context.Context, fileURL, targetPath string) error {
 	transport := &http.Transport{DisableKeepAlives: true, ForceAttemptHTTP2: false}
 	defer transport.CloseIdleConnections()
 
-	client := &http.Client{Transport: transport}
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   600 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

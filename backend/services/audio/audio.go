@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -95,27 +96,54 @@ func requestSceneAudio(ctx context.Context, cfg models.Config, scene models.Scen
 		return models.AudioResult{}, err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 240*time.Second)
-	defer cancel()
+	apiURL := base + "/api/v1/services/aigc/multimodal-generation/generation"
 
-	client := &http.Client{Timeout: 2400 * time.Second}
-	apiURL := base + "/v1/chat/completions"
-	request, err := http.NewRequestWithContext(reqCtx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
+	// 创建 HTTP 请求
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return models.AudioResult{}, err
 	}
 	request.Header.Set("Authorization", "Bearer "+voiceCfg.APIKey)
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Connection", "keep-alive")
+	request.ContentLength = int64(len(bodyBytes))
+
+	// 配置 HTTP Transport 以处理大请求体
+	transport := &http.Transport{
+		DisableKeepAlives:   false,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
+		// 关键：设置足够长的响应头超时和期望继续超时
+		ExpectContinueTimeout: 10 * time.Second,
+		ResponseHeaderTimeout: 600 * time.Second,
+		// 添加 DialContext 以设置连接超时
+		DialContext: (&net.Dialer{
+			Timeout:   120 * time.Second, // 连接超时
+			KeepAlive: 30 * time.Second,  // Keep-Alive 探测间隔
+		}).DialContext,
+	}
+
+	// 使用标准 HTTP 客户端，设置合理的超时时间
+	client := &http.Client{
+		Timeout:   600 * time.Second,
+		Transport: transport,
+	}
 
 	resp, err := client.Do(request)
 	if err != nil {
-		return models.AudioResult{}, err
+		return models.AudioResult{}, fmt.Errorf("发送请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
-		return models.AudioResult{}, fmt.Errorf("语音服务请求失败: %s", strings.TrimSpace(string(errBody)))
+		errMsg := strings.TrimSpace(string(errBody))
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+		}
+		return models.AudioResult{}, fmt.Errorf("语音服务请求失败 (状态码: %d): %s", resp.StatusCode, errMsg)
 	}
 
 	var payload map[string]any

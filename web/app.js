@@ -22,6 +22,7 @@ const sceneCount = document.getElementById("scene-count");
 const animeStyle = document.getElementById("anime-style");
 
 let currentFilePath = "";
+let currentImageEditConfig = null;
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -54,6 +55,13 @@ async function loadConfig() {
     imageModel.value = imageCfg.model ?? data.imageModel ?? "";
     imageBaseUrl.value = imageCfg.baseUrl ?? data.imageBaseUrl ?? llmBaseUrl.value ?? "";
     imageApiKey.value = imageCfg.apiKey ?? data.imageApiKey ?? llmApiKey.value ?? "";
+
+    // 保存 imageEdit 配置，以便在保存时不丢失
+    currentImageEditConfig = data.imageEdit ?? {
+      model: "",
+      baseUrl: "",
+      apiKey: ""
+    };
 
     const voiceCfg = data.voice ?? {};
     voiceModel.value = voiceCfg.model ?? "";
@@ -134,6 +142,11 @@ form.addEventListener("submit", async (event) => {
       model: imageModel.value.trim(),
       baseUrl: imageBaseUrl.value.trim(),
       apiKey: imageApiKey.value.trim(),
+    },
+    imageEdit: currentImageEditConfig ?? {
+      model: "",
+      baseUrl: "",
+      apiKey: ""
     },
     voice: {
       model: voiceModel.value.trim(),
