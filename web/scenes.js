@@ -165,7 +165,7 @@ function renderScenes(scenes) {
     const characterGenerateBtn = document.createElement("button");
     characterGenerateBtn.type = "button";
     characterGenerateBtn.className = "scene-character-generate";
-    characterGenerateBtn.textContent = "人物生成";
+    characterGenerateBtn.textContent = "关联人物生成";
     characterGenerateBtn.title = scene.imagePath
       ? "使用人物图片重新生成场景图片"
       : "使用人物图片生成场景图片";
