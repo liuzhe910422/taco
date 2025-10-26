@@ -343,6 +343,7 @@ func requestSceneImageWithCharacters(ctx context.Context, cfg models.Config, sce
 	}
 
 	characterImages := make(map[string]string)
+	characterNames := []string{}
 	for _, charName := range scene.Characters {
 		for _, char := range allCharacters {
 			if char.Name == charName && char.ImagePath != "" {
@@ -364,7 +365,18 @@ func requestSceneImageWithCharacters(ctx context.Context, cfg models.Config, sce
 				}
 				log.Printf("[INFO] 成功读取角色 %s 的图片，大小: %d 字节", charName, len(imageData))
 				base64Image := base64.StdEncoding.EncodeToString(imageData)
-				characterImages[charName] = base64Image
+
+				// 检测图片格式
+				ext := strings.ToLower(filepath.Ext(imagePath))
+				mimeType := "image/png"
+				if ext == ".jpg" || ext == ".jpeg" {
+					mimeType = "image/jpeg"
+				} else if ext == ".webp" {
+					mimeType = "image/webp"
+				}
+
+				characterImages[charName] = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Image)
+				characterNames = append(characterNames, charName)
 				break
 			}
 		}
@@ -372,32 +384,29 @@ func requestSceneImageWithCharacters(ctx context.Context, cfg models.Config, sce
 
 	log.Printf("[INFO] 成功加载 %d 个角色的图片", len(characterImages))
 
+	// 构建千问API格式的content数组
 	contentArray := []map[string]any{}
 	textBuilder := strings.Builder{}
 
+	// 添加角色图片到content数组（按顺序）
 	if len(characterImages) > 0 {
-		imageIndex := 1
-		for charName, base64Image := range characterImages {
+		for imageIndex, charName := range characterNames {
 			contentArray = append(contentArray, map[string]any{
-				"type": "image_url",
-				"image_url": map[string]string{
-					"url": fmt.Sprintf("data:image/png;base64,%s", base64Image),
-				},
+				"image": characterImages[charName],
 			})
-			textBuilder.WriteString(fmt.Sprintf("图%d是%s。", imageIndex, charName))
-			imageIndex++
+			textBuilder.WriteString(fmt.Sprintf("图%d中的人物是%s。", imageIndex+1, charName))
 		}
 	}
 
-	textBuilder.WriteString("请根据上述人物形象，")
+	// 构建编辑指令文本
+	textBuilder.WriteString("请")
 	if styleDesc := strings.TrimSpace(cfg.AnimeStyle); styleDesc != "" {
 		textBuilder.WriteString("以")
 		textBuilder.WriteString(styleDesc)
-		textBuilder.WriteString("绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
 	} else {
-		textBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+		textBuilder.WriteString("以高质量动漫风格")
 	}
-	textBuilder.WriteString("场景描述：")
+	textBuilder.WriteString("绘制以下场景。场景描述：")
 	textBuilder.WriteString(scene.Description)
 
 	characterLine := strings.Join(scene.Characters, "、")
@@ -412,23 +421,27 @@ func requestSceneImageWithCharacters(ctx context.Context, cfg models.Config, sce
 		textBuilder.WriteString(dialogueSnippet)
 	}
 
-	textBuilder.WriteString("。画面需呈现明显的动漫风格、柔和光效与细腻线条。")
+	textBuilder.WriteString("。要求画面呈现明显的动漫风格、电影级光影、鲜明色彩、角色表情生动、柔和光效与细腻线条。")
 
+	// 添加文本指令到content数组
 	contentArray = append(contentArray, map[string]any{
-		"type": "text",
 		"text": textBuilder.String(),
 	})
 
-	messages := []map[string]any{
-		{
-			"role":    "user",
-			"content": contentArray,
-		},
-	}
-
+	// 构建千问API格式的请求体
 	reqBody := map[string]any{
-		"model":    imageEditCfg.Model,
-		"messages": messages,
+		"model": imageEditCfg.Model,
+		"input": map[string]any{
+			"messages": []map[string]any{
+				{
+					"role":    "user",
+					"content": contentArray,
+				},
+			},
+		},
+		"parameters": map[string]any{
+			"watermark": false,
+		},
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -562,7 +575,8 @@ func doImageEditRequest(ctx context.Context, baseURL, apiKey string, bodyBytes [
 		Transport: transport,
 	}
 
-	apiURL := baseURL + "/v1/chat/completions"
+	// 千问图片编辑API使用不同的端点
+	apiURL := baseURL + "/api/v1/services/aigc/multimodal-generation/generation"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return "", err
@@ -592,27 +606,38 @@ func doImageEditRequest(ctx context.Context, baseURL, apiKey string, bodyBytes [
 	responseJSON, _ := json.Marshal(response)
 	log.Printf("[图像编辑 API] 响应内容: %s", string(responseJSON))
 
-	if choices, ok := response["choices"].([]any); ok && len(choices) > 0 {
-		if choice, ok := choices[0].(map[string]any); ok {
-			if message, ok := choice["message"].(map[string]any); ok {
-				if content, ok := message["content"].(string); ok {
-					imageURL, err := extractImageURL(content)
-					if err == nil {
-						return imageURL, nil
-					}
-					if strings.HasPrefix(strings.ToLower(content), "http") {
-						return content, nil
+	// 优先检查千问API格式的响应 (output.choices[0].message.content[0].image)
+	if output, ok := response["output"].(map[string]any); ok {
+		if choices, ok := output["choices"].([]any); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]any); ok {
+				if message, ok := choice["message"].(map[string]any); ok {
+					if content, ok := message["content"].([]any); ok && len(content) > 0 {
+						if contentItem, ok := content[0].(map[string]any); ok {
+							if imageURL, ok := contentItem["image"].(string); ok {
+								log.Printf("[图像编辑 API] 从千问格式响应中提取到图片URL: %s", imageURL)
+								return imageURL, nil
+							}
+						}
 					}
 				}
 			}
 		}
 	}
 
-	if output, ok := response["output"].(map[string]any); ok {
-		if results, ok := output["results"].([]any); ok && len(results) > 0 {
-			if result, ok := results[0].(map[string]any); ok {
-				if url, ok := result["url"].(string); ok {
-					return url, nil
+	// 兼容OpenAI格式的响应 (choices)
+	if choices, ok := response["choices"].([]any); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]any); ok {
+			if message, ok := choice["message"].(map[string]any); ok {
+				if content, ok := message["content"].(string); ok {
+					imageURL, err := extractImageURL(content)
+					if err == nil {
+						log.Printf("[图像编辑 API] 从OpenAI格式响应中提取到图片URL: %s", imageURL)
+						return imageURL, nil
+					}
+					if strings.HasPrefix(strings.ToLower(content), "http") {
+						log.Printf("[图像编辑 API] 直接使用响应内容作为URL: %s", content)
+						return content, nil
+					}
 				}
 			}
 		}
