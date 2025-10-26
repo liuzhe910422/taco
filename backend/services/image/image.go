@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -80,7 +81,13 @@ func requestCharacterImage(ctx context.Context, cfg models.Config, character mod
 	}
 
 	promptBuilder := strings.Builder{}
-	promptBuilder.WriteString("以高质量动漫风格绘制角色立绘，要求：")
+	if styleDesc := strings.TrimSpace(cfg.AnimeStyle); styleDesc != "" {
+		promptBuilder.WriteString("以")
+		promptBuilder.WriteString(styleDesc)
+		promptBuilder.WriteString("绘制角色立绘，要求：")
+	} else {
+		promptBuilder.WriteString("以高质量动漫风格绘制角色立绘，要求：")
+	}
 	promptBuilder.WriteString("角色名称：")
 	promptBuilder.WriteString(character.Name)
 	promptBuilder.WriteString("。角色特征描述：")
@@ -205,7 +212,13 @@ func requestSceneImage(ctx context.Context, cfg models.Config, scene models.Scen
 	}
 
 	promptBuilder := strings.Builder{}
-	promptBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	if styleDesc := strings.TrimSpace(cfg.AnimeStyle); styleDesc != "" {
+		promptBuilder.WriteString("以")
+		promptBuilder.WriteString(styleDesc)
+		promptBuilder.WriteString("绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	} else {
+		promptBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	}
 	promptBuilder.WriteString("场景描述：")
 	promptBuilder.WriteString(scene.Description)
 	if characterLine != "" {
@@ -377,7 +390,13 @@ func requestSceneImageWithCharacters(ctx context.Context, cfg models.Config, sce
 	}
 
 	textBuilder.WriteString("请根据上述人物形象，")
-	textBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	if styleDesc := strings.TrimSpace(cfg.AnimeStyle); styleDesc != "" {
+		textBuilder.WriteString("以")
+		textBuilder.WriteString(styleDesc)
+		textBuilder.WriteString("绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	} else {
+		textBuilder.WriteString("以高质量动漫风格绘制以下场景，强调电影级光影、鲜明色彩与角色表情。")
+	}
 	textBuilder.WriteString("场景描述：")
 	textBuilder.WriteString(scene.Description)
 
@@ -452,20 +471,37 @@ func requestSceneImageWithCharacters(ctx context.Context, cfg models.Config, sce
 }
 
 func doImageRequest(ctx context.Context, baseURL, apiKey string, bodyBytes []byte) (string, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
-	defer cancel()
+	// 配置 HTTP Transport 以处理大请求体
+	transport := &http.Transport{
+		DisableKeepAlives:   false,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
+		// 关键：设置足够长的响应头超时和期望继续超时
+		ExpectContinueTimeout: 10 * time.Second,
+		ResponseHeaderTimeout: 600 * time.Second,
+		// 添加 DialContext 以设置连接超时
+		DialContext: (&net.Dialer{
+			Timeout:   120 * time.Second, // 连接超时
+			KeepAlive: 30 * time.Second,  // Keep-Alive 探测间隔
+		}).DialContext,
+	}
 
 	client := &http.Client{
-		Timeout: 300 * time.Second,
+		Timeout:   600 * time.Second,
+		Transport: transport,
 	}
 
 	apiURL := baseURL + "/v1/chat/completions"
-	request, err := http.NewRequestWithContext(reqCtx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return "", err
 	}
 	request.Header.Set("Authorization", "Bearer "+apiKey)
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Connection", "keep-alive")
+	request.ContentLength = int64(len(bodyBytes))
 
 	resp, err := client.Do(request)
 	if err != nil {
@@ -504,20 +540,37 @@ func doImageRequest(ctx context.Context, baseURL, apiKey string, bodyBytes []byt
 }
 
 func doImageEditRequest(ctx context.Context, baseURL, apiKey string, bodyBytes []byte) (string, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
-	defer cancel()
+	// 配置 HTTP Transport 以处理大请求体
+	transport := &http.Transport{
+		DisableKeepAlives:   false,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
+		// 关键：设置足够长的响应头超时和期望继续超时
+		ExpectContinueTimeout: 10 * time.Second,
+		ResponseHeaderTimeout: 600 * time.Second,
+		// 添加 DialContext 以设置连接超时
+		DialContext: (&net.Dialer{
+			Timeout:   120 * time.Second, // 连接超时
+			KeepAlive: 30 * time.Second,  // Keep-Alive 探测间隔
+		}).DialContext,
+	}
 
 	client := &http.Client{
-		Timeout: 300 * time.Second,
+		Timeout:   600 * time.Second,
+		Transport: transport,
 	}
 
 	apiURL := baseURL + "/v1/chat/completions"
-	request, err := http.NewRequestWithContext(reqCtx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return "", err
 	}
 	request.Header.Set("Authorization", "Bearer "+apiKey)
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Connection", "keep-alive")
+	request.ContentLength = int64(len(bodyBytes))
 
 	resp, err := client.Do(request)
 	if err != nil {

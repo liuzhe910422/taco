@@ -19,8 +19,10 @@ const voiceLanguage = document.getElementById("voice-language");
 const videoModel = document.getElementById("video-model");
 const characterCount = document.getElementById("character-count");
 const sceneCount = document.getElementById("scene-count");
+const animeStyle = document.getElementById("anime-style");
 
 let currentFilePath = "";
+let currentImageEditConfig = null;
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -54,6 +56,13 @@ async function loadConfig() {
     imageBaseUrl.value = imageCfg.baseUrl ?? data.imageBaseUrl ?? llmBaseUrl.value ?? "";
     imageApiKey.value = imageCfg.apiKey ?? data.imageApiKey ?? llmApiKey.value ?? "";
 
+    // 保存 imageEdit 配置，以便在保存时不丢失
+    currentImageEditConfig = data.imageEdit ?? {
+      model: "",
+      baseUrl: "",
+      apiKey: ""
+    };
+
     const voiceCfg = data.voice ?? {};
     voiceModel.value = voiceCfg.model ?? "";
     voiceBaseUrl.value = voiceCfg.baseUrl ?? "";
@@ -63,6 +72,7 @@ async function loadConfig() {
     videoModel.value = data.videoModel ?? "";
     characterCount.value = data.characterCount ?? 0;
     sceneCount.value = data.sceneCount ?? 0;
+    animeStyle.value = data.animeStyle ?? "";
     setUploadLabel(data.novelFile ?? "");
     setStatus("");
   } catch (err) {
@@ -133,6 +143,11 @@ form.addEventListener("submit", async (event) => {
       baseUrl: imageBaseUrl.value.trim(),
       apiKey: imageApiKey.value.trim(),
     },
+    imageEdit: currentImageEditConfig ?? {
+      model: "",
+      baseUrl: "",
+      apiKey: ""
+    },
     voice: {
       model: voiceModel.value.trim(),
       baseUrl: voiceBaseUrl.value.trim(),
@@ -143,6 +158,7 @@ form.addEventListener("submit", async (event) => {
     videoModel: videoModel.value.trim(),
     characterCount: Number(characterCount.value || 0),
     sceneCount: Number(sceneCount.value || 0),
+    animeStyle: animeStyle.value.trim(),
   };
 
   try {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -39,14 +40,37 @@ func InvokeLLM(ctx context.Context, cfg models.Config, messages []map[string]str
 	apiURL := base + "/v1/chat/completions"
 	log.Printf("[LLM API] 发起请求: %s, 模型: %s, 消息数: %d", apiURL, cfg.LLM.Model, len(messages))
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return "", err
 	}
 	request.Header.Set("Authorization", "Bearer "+cfg.LLM.APIKey)
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Connection", "keep-alive")
+	request.ContentLength = int64(len(bodyBytes))
 
-	client := &http.Client{Timeout: 600 * time.Second}
+	// 配置 HTTP Transport 以处理大请求体
+	transport := &http.Transport{
+		DisableKeepAlives:   false,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second,
+		// 关键：设置足够长的响应头超时和期望继续超时
+		ExpectContinueTimeout: 10 * time.Second,
+		ResponseHeaderTimeout: 600 * time.Second,
+		// 添加 DialContext 以设置连接超时
+		DialContext: (&net.Dialer{
+			Timeout:   120 * time.Second, // 连接超时
+			KeepAlive: 30 * time.Second,  // Keep-Alive 探测间隔
+		}).DialContext,
+	}
+
+	client := &http.Client{
+		Timeout:   600 * time.Second,
+		Transport: transport,
+	}
+
 	resp, err := client.Do(request)
 	if err != nil {
 		log.Printf("[LLM API] 请求失败: %v", err)
