@@ -118,9 +118,15 @@ function renderCharacters(characters) {
     });
     bodyContent.appendChild(descInput);
 
-    // 生成角色图片按钮
     const buttonGroup = document.createElement("div");
     buttonGroup.className = "character-button-group";
+
+    const uploadImageBtn = document.createElement("button");
+    uploadImageBtn.type = "button";
+    uploadImageBtn.className = "character-upload-btn";
+    uploadImageBtn.textContent = "上传图片";
+    uploadImageBtn.addEventListener("click", () => triggerImageUpload(index));
+    buttonGroup.appendChild(uploadImageBtn);
 
     const generateImageBtn = document.createElement("button");
     generateImageBtn.type = "button";
@@ -128,6 +134,14 @@ function renderCharacters(characters) {
     generateImageBtn.textContent = "生成角色图片";
     generateImageBtn.addEventListener("click", () => generateCharacterImage(index));
     buttonGroup.appendChild(generateImageBtn);
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/jpeg,image/png,image/webp";
+    fileInput.style.display = "none";
+    fileInput.id = `character-image-input-${index}`;
+    fileInput.addEventListener("change", (event) => uploadCharacterImage(index, event));
+    buttonGroup.appendChild(fileInput);
 
     bodyContent.appendChild(buttonGroup);
     item.appendChild(bodyContent);
@@ -317,6 +331,57 @@ async function generateAllCharacterImages() {
     setTimeout(() => {
       progressContainer.style.display = "none";
     }, 2000);
+  }
+}
+
+function triggerImageUpload(index) {
+  const fileInput = document.getElementById(`character-image-input-${index}`);
+  if (fileInput) {
+    fileInput.click();
+  }
+}
+
+async function uploadCharacterImage(index, event) {
+  if (isBusy) {
+    return;
+  }
+  const file = event.target.files[0];
+  if (!file) {
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    setStatus("请选择有效的图片文件", true);
+    return;
+  }
+
+  try {
+    setBusy(true);
+    setStatus(`正在上传角色 ${index + 1} 的图片...`);
+
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("index", index.toString());
+
+    const response = await fetch("/api/characters/upload-image", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "上传图片失败");
+    }
+
+    const updatedCharacter = await response.json();
+    charactersData[index] = updatedCharacter;
+    renderCharacters(charactersData);
+    setStatus(`角色 ${index + 1} 的图片上传成功！`);
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    setBusy(false);
+    event.target.value = "";
   }
 }
 

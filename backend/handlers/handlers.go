@@ -269,6 +269,86 @@ func ExtractScenesHandler(w http.ResponseWriter, r *http.Request) {
 	utils.WriteJSON(w, scenes)
 }
 
+func UploadCharacterImageHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[HTTP] %s %s - 来自 %s", r.Method, r.URL.Path, r.RemoteAddr)
+	if r.Method != http.MethodPost {
+		http.Error(w, "不支持的请求方法", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseMultipartForm(utils.MaxFileSize); err != nil {
+		log.Printf("[ERROR] 无法解析上传文件: %v", err)
+		http.Error(w, "无法解析上传文件", http.StatusBadRequest)
+		return
+	}
+
+	indexStr := r.FormValue("index")
+	var index int
+	if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
+		http.Error(w, "角色索引无效", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		log.Printf("[ERROR] 未选择图片文件: %v", err)
+		http.Error(w, "未选择图片文件", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	log.Printf("[INFO] 接收到图片上传: %s, 大小: %d 字节", header.Filename, header.Size)
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+		http.Error(w, "不支持的图片格式，请上传 JPG、PNG 或 WEBP 格式", http.StatusBadRequest)
+		return
+	}
+
+	characters, err := config.LoadCharactersData()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("读取角色失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if index < 0 || index >= len(characters) {
+		http.Error(w, "角色索引超出范围", http.StatusBadRequest)
+		return
+	}
+
+	if err := os.MkdirAll(utils.GeneratedImagesDir, 0o755); err != nil {
+		http.Error(w, "创建图片目录失败", http.StatusInternalServerError)
+		return
+	}
+
+	filename := fmt.Sprintf("character_%d_%d%s", index, time.Now().UnixNano(), ext)
+	targetPath := filepath.Join(utils.GeneratedImagesDir, filename)
+
+	dst, err := os.Create(targetPath)
+	if err != nil {
+		http.Error(w, "保存文件失败", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		log.Printf("[ERROR] 写入文件失败: %v", err)
+		http.Error(w, "写入文件失败", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[SUCCESS] 文件上传成功: %s", targetPath)
+	imagePath := "/generated/images/" + filename
+	character := characters[index]
+	character.ImagePath = imagePath
+	characters[index] = character
+
+	if err := config.SaveCharactersData(characters); err != nil {
+		http.Error(w, fmt.Sprintf("保存角色失败: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	utils.WriteJSON(w, character)
+}
+
 func GenerateCharacterImageHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[HTTP] %s %s - 来自 %s", r.Method, r.URL.Path, r.RemoteAddr)
 	if r.Method != http.MethodPost {
