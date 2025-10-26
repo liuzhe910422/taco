@@ -4,6 +4,10 @@
 
 Taco 是一个自动根据小说生成动漫的智能系统。通过先进的 AI 技术，系统能够将文字小说转换为视觉化的动漫内容，以图配文+声音的形式呈现。
 
+## 演示视频
+
+项目演示视频位于：`taco/demo.mp4`
+
 ## 核心功能
 
 ### 1. 小说处理
@@ -83,27 +87,51 @@ cd taco
 
 2. 配置 AI 服务
 
-在 `backend/config/config.json` 中配置您的 AI 服务：
+配置文件位于 `taco/config/config.json`，需要配置以下内容：
 
 ```json
 {
+  "novelFile": "/path/to/your/novel.txt",
   "llm": {
-    "model": "模型名称",
-    "baseUrl": "API 基础 URL",
-    "apiKey": "API 密钥"
+    "model": "gpt-4.1-nano",
+    "baseUrl": "https://api.apiqik.com",
+    "apiKey": "your-llm-api-key"
   },
   "image": {
-    "model": "图像模型名称",
-    "baseUrl": "API 基础 URL",
-    "apiKey": "API 密钥"
+    "model": "qwen-image",
+    "baseUrl": "https://api.apiqik.com",
+    "apiKey": "your-image-api-key"
+  },
+  "imageEdit": {
+    "model": "qwen-image-edit",
+    "baseUrl": "https://dashscope.aliyuncs.com",
+    "apiKey": "your-image-edit-api-key"
   },
   "voice": {
-    "model": "语音模型名称",
-    "baseUrl": "API 基础 URL",
-    "apiKey": "API 密钥"
-  }
+    "model": "qwen3-tts-flash",
+    "baseUrl": "https://dashscope.aliyuncs.com",
+    "apiKey": "your-voice-api-key",
+    "voice": "Cherry",
+    "language": "Chinese",
+    "outputDir": ""
+  },
+  "videoModel": "pika-labs",
+  "characterCount": 3,
+  "sceneCount": 2,
+  "animeStyle": "可爱Q版风格"
 }
 ```
+
+**配置说明：**
+- `novelFile`: 小说文件路径
+- `llm`: 大语言模型配置（用于角色提取和场景分析）
+- `image`: 图像生成模型配置
+- `imageEdit`: 图像编辑模型配置
+- `voice`: 语音合成配置，包括音色(voice)、语言(language)等
+- `videoModel`: 视频生成模型
+- `characterCount`: 提取的角色数量
+- `sceneCount`: 生成的场景数量
+- `animeStyle`: 动漫风格设定
 
 3. 启动服务器
 
