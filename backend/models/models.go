@@ -9,6 +9,7 @@ type Config struct {
 	VideoModel     string      `json:"videoModel"`
 	CharacterCount int         `json:"characterCount"`
 	SceneCount     int         `json:"sceneCount"`
+	AnimeStyle     string      `json:"animeStyle,omitempty"`
 }
 
 type LLMConfig struct {
